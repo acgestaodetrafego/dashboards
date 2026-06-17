@@ -180,6 +180,7 @@ tr:hover td{background:rgba(29,185,84,.04)}
     <div class="taxa-grid">
       <div class="taxa-item"><span>Clique → PV</span><span class="taxa-val" id="taxa-1">—</span></div>
       <div class="taxa-item"><span>PV → Lead</span><span class="taxa-val" id="taxa-2">—</span></div>
+      <div class="taxa-item"><span>PV → Checkout</span><span class="taxa-val" id="taxa-pvck">—</span></div>
       <div class="taxa-item"><span>Lead → Checkout</span><span class="taxa-val" id="taxa-3">—</span></div>
       <div class="taxa-item"><span>Checkout → Compra</span><span class="taxa-val" id="taxa-4">—</span></div>
       <div class="taxa-item"><span>Clique → Compra</span><span class="taxa-val" id="taxa-5">—</span></div>
@@ -708,6 +709,7 @@ function renderFunil(cliques, pv, leads, ck, compras){
   document.getElementById('funil-compras').style.width = (cliques>0 ? compras/max*100 : 0) + '%';
   setText('taxa-1', pv>0&&cliques>0 ? fmtPct(pv/cliques*100) : '—');
   setText('taxa-2', leads>0&&pv>0 ? fmtPct(leads/pv*100) : '—');
+  setText('taxa-pvck', ck>0&&pv>0 ? fmtPct(ck/pv*100) : '—');
   setText('taxa-3', ck>0&&leads>0 ? fmtPct(ck/leads*100) : '—');
   setText('taxa-4', compras>0&&ck>0 ? fmtPct(compras/ck*100) : '—');
   setText('taxa-5', compras>0&&cliques>0 ? fmtPct(compras/cliques*100) : '—');
