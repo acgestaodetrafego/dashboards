@@ -136,6 +136,7 @@ tr:hover td{background:rgba(29,185,84,.04)}
 <div class="tabs">
   <div class="tab active" onclick="showTab('trafego',this)">📊 Tráfego</div>
   <div class="tab" onclick="showTab('visao',this)">🌐 Visão Geral</div>
+  <div class="tab" onclick="showTab('leads',this)">📋 Leads</div>
   <div class="tab" onclick="showTab('criativos',this)">Criativos</div>
   <div class="tab" onclick="showTab('publicos',this)">Públicos</div>
   <div class="tab" onclick="showTab('semanal',this)">Semana a Semana</div>
@@ -157,6 +158,7 @@ tr:hover td{background:rgba(29,185,84,.04)}
     <div class="kpi-card"><div class="kpi-label">Ticket Médio</div><div class="kpi-value" id="kpi-ticket">—</div></div>
     <div class="kpi-card"><div class="kpi-label">Cliques</div><div class="kpi-value" id="kpi-cliques">—</div></div>
     <div class="kpi-card"><div class="kpi-label">Impressões</div><div class="kpi-value" id="kpi-impressoes">—</div></div>
+    <div class="kpi-card"><div class="kpi-label">CTR</div><div class="kpi-value" id="kpi-ctr">—</div></div>
     <div class="kpi-card"><div class="kpi-label">CPC</div><div class="kpi-value" id="kpi-cpc">—</div></div>
     <div class="kpi-card"><div class="kpi-label">CPM</div><div class="kpi-value" id="kpi-cpm">—</div></div>
   </div>
@@ -166,19 +168,6 @@ tr:hover td{background:rgba(29,185,84,.04)}
 
 <!-- VISÃO GERAL -->
 <div class="content" id="tab-visao">
-  <div class="kpi-grid">
-    <div class="kpi-card"><div class="kpi-label">Investimento</div><div class="kpi-value" id="vg-investimento">—</div></div>
-    <div class="kpi-card"><div class="kpi-label">Fat. Total</div><div class="kpi-value green" id="vg-fat">—</div></div>
-    <div class="kpi-card"><div class="kpi-label">ROAS Total</div><div class="kpi-value green" id="vg-roas">—</div></div>
-    <div class="kpi-card"><div class="kpi-label">Vendas Total</div><div class="kpi-value" id="vg-vendas">—</div></div>
-    <div class="kpi-card"><div class="kpi-label">Tráfego</div><div class="kpi-value" id="vg-trafego">—</div></div>
-    <div class="kpi-card"><div class="kpi-label">Orgânicas</div><div class="kpi-value" id="vg-organicas">—</div></div>
-    <div class="kpi-card"><div class="kpi-label">Ticket Médio</div><div class="kpi-value" id="vg-ticket">—</div></div>
-    <div class="kpi-card"><div class="kpi-label">CAC Total</div><div class="kpi-value" id="vg-cac">—</div></div>
-    <div class="kpi-card"><div class="kpi-label">Leads (Quiz)</div><div class="kpi-value" id="vg-leads">—</div></div>
-    <div class="kpi-card"><div class="kpi-label">Custo por Lead</div><div class="kpi-value" id="vg-cpl">—</div></div>
-    <div class="kpi-card"><div class="kpi-label">Lead → Venda</div><div class="kpi-value green" id="vg-lead-venda">—</div></div>
-  </div>
   <div class="sec-title">Funil</div>
   <div class="funil-section">
     <div>
@@ -200,6 +189,32 @@ tr:hover td{background:rgba(29,185,84,.04)}
   <div class="tbl-wrap"><table>
     <thead><tr><th>Data</th><th>Invest.</th><th>Fat. Total</th><th>ROAS</th><th>Compras Total</th><th>Tráfego</th><th>Orgânicas</th><th>Leads</th><th>Ticket Médio</th><th>CAC</th></tr></thead>
     <tbody id="vg-tbody"></tbody>
+  </table></div>
+</div>
+
+<!-- LEADS -->
+<div class="content" id="tab-leads">
+  <div class="ob-info">📊 "Leads (Quiz)" = respostas reais no formulário do quiz. "Leads (Meta Ads)" = eventos de lead reportados pelo próprio Meta Ads. Os dois podem variar entre si (atraso de atribuição, duplicidade). A quebra "Leads por Criativo" usa os eventos do Meta Ads, pois é o único dado que liga lead a criativo.</div>
+  <div class="kpi-grid">
+    <div class="kpi-card"><div class="kpi-label">Leads (Quiz)</div><div class="kpi-value" id="lead-total">—</div></div>
+    <div class="kpi-card"><div class="kpi-label">Leads (Meta Ads)</div><div class="kpi-value" id="lead-meta">—</div></div>
+    <div class="kpi-card"><div class="kpi-label">Custo por Lead</div><div class="kpi-value" id="lead-cpl">—</div></div>
+    <div class="kpi-card"><div class="kpi-label">Lead → Venda</div><div class="kpi-value green" id="lead-conversao">—</div></div>
+  </div>
+  <div class="sec-title">Leads por Criativo</div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Criativo</th><th>Leads</th><th>Invest.</th><th>CPL</th></tr></thead>
+    <tbody id="lead-cri-tbody"></tbody>
+  </table></div>
+  <div class="sec-title">Leads por Resultado do Quiz</div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Resultado</th><th>Leads</th><th>%</th></tr></thead>
+    <tbody id="lead-res-tbody"></tbody>
+  </table></div>
+  <div class="sec-title">Lista de Leads</div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Data</th><th>Nome</th><th>E-mail</th><th>Resultado</th></tr></thead>
+    <tbody id="lead-list-tbody"></tbody>
   </table></div>
 </div>
 
@@ -299,7 +314,7 @@ const CONFIG = {
   // Colunas do Gerenciador (0-based) — layout customizado (Make)
   G: {
     date: 0, campaign: 2, adset: 3, ad: 4, link: 5,
-    inv: 6, imp: 7, reach: 8, cliques: 9, pv: 10, ck: 11,
+    inv: 6, imp: 7, reach: 8, cliques: 9, pv: 10, ck: 11, leads: 12,
     statusCampaign: 13, statusAdset: 14, statusAd: 15, publico: 16,
   },
 
@@ -413,7 +428,7 @@ function buildGROWS(rows){
     date: parseFlexDate(r[G.date]),
     campaign: r[G.campaign]||'', adset: r[G.adset]||'', ad: r[G.ad]||'', link: r[G.link]||'',
     inv: parseFlexNumPlain(r[G.inv]), imp: parseFlexNumPlain(r[G.imp]), reach: parseFlexNumPlain(r[G.reach]),
-    cliques: parseFlexNumPlain(r[G.cliques]), pv: parseFlexNumPlain(r[G.pv]), ck: parseFlexNumPlain(r[G.ck]),
+    cliques: parseFlexNumPlain(r[G.cliques]), pv: parseFlexNumPlain(r[G.pv]), ck: parseFlexNumPlain(r[G.ck]), leads: parseFlexNumPlain(r[G.leads]),
     statusCampaign: (r[G.statusCampaign]||'').toUpperCase().trim(),
     statusAdset: (r[G.statusAdset]||'').toUpperCase().trim(),
     statusAd: (r[G.statusAd]||'').toUpperCase().trim(),
@@ -578,6 +593,7 @@ function renderAll(){
   document.getElementById('range-info').textContent = (from&&to) ? `${from} → ${to}` : '';
   renderTrafego(from, to);
   renderVisaoGeral(from, to);
+  renderLeads(from, to);
   renderCriativos(from, to);
   renderPublicos(from, to);
   renderSemanal();
@@ -605,6 +621,7 @@ function renderTrafego(from, to){
   const imp = fGrows.reduce((s,g)=>s+g.imp,0);
   const cpc = cliques>0 ? investimento/cliques : 0;
   const cpm = imp>0 ? investimento/imp*1000 : 0;
+  const ctr = imp>0 ? cliques/imp*100 : 0;
   const vendasTrafego = trafegoSales.length, vendasOrg = orgSales.length;
   const obCountTrafego = trafegoSales.reduce((s,v)=>s+v.obCount,0);
   const obCountOrg = orgSales.reduce((s,v)=>s+v.obCount,0);
@@ -623,6 +640,7 @@ function renderTrafego(from, to){
   setText('kpi-ticket', fmtBRL(ticketMedio));
   setText('kpi-cliques', fmtInt(cliques));
   setText('kpi-impressoes', fmtInt(imp));
+  setText('kpi-ctr', fmtPct(ctr));
   setText('kpi-cpc', fmtBRL(cpc));
   setText('kpi-cpm', fmtBRL(cpm));
 
@@ -655,30 +673,8 @@ function renderVisaoGeral(from, to){
   const fDias = filterByDate(DIAS, 'data', from, to);
   const fLeads = filterByDate(LEADS, 'data', from, to);
 
-  const investimento = fGrows.reduce((s,g)=>s+g.inv,0);
-  const fatTotal = fSales.reduce((s,v)=>s+v.fatTotal,0);
-  const roasTotal = investimento>0 ? fatTotal/investimento : 0;
   const vendasTotal = fSales.length;
-  const trafegoCount = fSales.filter(isTrafego).length;
-  const orgCount = vendasTotal - trafegoCount;
-  const ticketMedio = vendasTotal>0 ? fatTotal/vendasTotal : 0;
-  const cacTotal = trafegoCount>0 ? investimento/trafegoCount : 0;
   const leadsTotal = fLeads.length;
-  const cpl = leadsTotal>0 ? investimento/leadsTotal : 0;
-  const leadParaVenda = leadsTotal>0 ? vendasTotal/leadsTotal*100 : 0;
-
-  setText('vg-investimento', fmtBRL(investimento));
-  setText('vg-fat', fmtBRL(fatTotal));
-  setText('vg-roas', fmtNum2(roasTotal));
-  setText('vg-vendas', vendasTotal);
-  setText('vg-trafego', trafegoCount);
-  setText('vg-organicas', orgCount);
-  setText('vg-ticket', fmtBRL(ticketMedio));
-  setText('vg-cac', fmtBRL(cacTotal));
-  setText('vg-leads', fmtInt(leadsTotal));
-  setText('vg-cpl', fmtBRL(cpl));
-  setText('vg-lead-venda', fmtPct(leadParaVenda));
-
   const cliques = fGrows.reduce((s,g)=>s+g.cliques,0);
   const pv = fGrows.reduce((s,g)=>s+g.pv,0);
   const ck = fGrows.reduce((s,g)=>s+g.ck,0);
@@ -715,6 +711,56 @@ function renderFunil(cliques, pv, leads, ck, compras){
   setText('taxa-3', ck>0&&leads>0 ? fmtPct(ck/leads*100) : '—');
   setText('taxa-4', compras>0&&ck>0 ? fmtPct(compras/ck*100) : '—');
   setText('taxa-5', compras>0&&cliques>0 ? fmtPct(compras/cliques*100) : '—');
+}
+
+// ── Leads ──────────────────────────────────────────────────────
+function renderLeads(from, to){
+  const fGrows = filterByDate(GROWS, 'date', from, to);
+  const fLeads = filterByDate(LEADS, 'data', from, to);
+  const fSales = filterByDate(SALES, 'data', from, to);
+
+  const investimento = fGrows.reduce((s,g)=>s+g.inv,0);
+  const leadsTotal = fLeads.length;
+  const leadsMeta = fGrows.reduce((s,g)=>s+(g.leads||0),0);
+  const cpl = leadsTotal>0 ? investimento/leadsTotal : 0;
+  const leadParaVenda = leadsTotal>0 ? fSales.length/leadsTotal*100 : 0;
+
+  setText('lead-total', fmtInt(leadsTotal));
+  setText('lead-meta', fmtInt(leadsMeta));
+  setText('lead-cpl', fmtBRL(cpl));
+  setText('lead-conversao', fmtPct(leadParaVenda));
+
+  const criMap = {};
+  fGrows.forEach(g=>{
+    const key = g.ad || '(sem nome)';
+    if(!criMap[key]) criMap[key] = {nome:g.ad, leads:0, inv:0};
+    criMap[key].leads += (g.leads||0);
+    criMap[key].inv += g.inv;
+  });
+  const porCriativo = Object.values(criMap).filter(c=>c.leads>0)
+    .map(c=>({...c, cpl: c.leads>0 ? c.inv/c.leads : 0}))
+    .sort((a,b)=>b.leads-a.leads);
+  const tbodyCri = document.getElementById('lead-cri-tbody');
+  tbodyCri.innerHTML = porCriativo.length ? porCriativo.map(c=>
+    `<tr><td>${c.nome||'—'}</td><td>${fmtInt(c.leads)}</td><td>${fmtBRL(c.inv)}</td><td>${fmtBRL(c.cpl)}</td></tr>`
+  ).join('') : '<tr><td colspan="4" class="empty-state">Sem dados de leads por criativo no período.</td></tr>';
+
+  const resMap = {};
+  fLeads.forEach(l=>{
+    const key = l.resultadoLabel || l.resultadoChave || '(sem resultado)';
+    resMap[key] = (resMap[key]||0) + 1;
+  });
+  const porResultado = Object.entries(resMap).sort((a,b)=>b[1]-a[1]);
+  const tbodyRes = document.getElementById('lead-res-tbody');
+  tbodyRes.innerHTML = porResultado.length ? porResultado.map(([nome,qtd])=>
+    `<tr><td>${nome}</td><td>${fmtInt(qtd)}</td><td>${fmtPct(leadsTotal>0?qtd/leadsTotal*100:0)}</td></tr>`
+  ).join('') : '<tr><td colspan="3" class="empty-state">Sem dados.</td></tr>';
+
+  const tbodyList = document.getElementById('lead-list-tbody');
+  const sortedLeads = fLeads.slice().sort((a,b)=>b.data.localeCompare(a.data));
+  tbodyList.innerHTML = sortedLeads.length ? sortedLeads.map(l=>
+    `<tr><td>${l.data}</td><td>${l.nome||'—'}</td><td>${l.email||'—'}</td><td>${l.resultadoLabel||l.resultadoChave||'—'}</td></tr>`
+  ).join('') : '<tr><td colspan="4" class="empty-state">Sem leads no período.</td></tr>';
 }
 
 // ── Criativos / Públicos ─────────────────────────────────────────
