@@ -19,6 +19,8 @@ body{background:#0c1210;color:#eef4f0;font-family:'DM Sans',sans-serif;min-heigh
 .logo-act{display:flex;align-items:center;gap:10px}
 .logo-act img{height:64px;width:auto;display:block}
 .period-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.date-range-group{display:flex;align-items:center;gap:8px}
+.preset-group{display:flex;align-items:center;gap:8px}
 .period-bar label{font-size:11px;color:rgba(238,244,240,.45);white-space:nowrap}
 .date-input{background:rgba(29,185,84,.06);border:1px solid rgba(29,185,84,.25);color:#eef4f0;padding:5px 10px;border-radius:6px;font-size:12px;font-family:'DM Sans',sans-serif;cursor:pointer;outline:none;min-width:118px}
 .date-input:focus{border-color:#1db954}
@@ -110,30 +112,39 @@ tr:hover td{background:rgba(29,185,84,.04)}
   .cri-grid{grid-template-columns:1fr}
   .chart-grid-2x2{grid-template-columns:1fr}
   .funil-section{grid-template-columns:1fr}
-  .logo-act img{height:38px}
-  .topbar-brand{padding:10px 14px;gap:8px}
-  .topbar-controls{padding:8px 14px}
-  .brand{font-size:14px}
-  .subtitle{font-size:9.5px}
+
+  /* Marca em destaque: logo grande, sozinha, centralizada no topo */
+  .topbar-brand{padding:16px 14px 12px;gap:10px;flex-direction:column;align-items:center;text-align:center}
+  .logo-act{justify-content:center;width:100%}
+  .logo-act img{height:60px}
+  .brand-row{justify-content:center}
+  .subtitle{text-align:center}
+
+  .topbar-controls{padding:10px 14px 14px}
   .content{padding:14px}
   .tabs{padding:0 10px}
   .tab{padding:10px 12px;font-size:12px}
   .kpi-grid{grid-template-columns:repeat(2,1fr);gap:8px}
   .kpi-card{padding:11px 12px}
   .kpi-value{font-size:16px}
-  .period-bar{gap:6px;width:100%}
+
+  /* Filtro de período: data manual em cima, atalhos embaixo, tudo centralizado */
+  .period-bar{flex-direction:column;align-items:center;gap:10px;width:100%}
+  .date-range-group{justify-content:center;width:100%}
+  .preset-group{justify-content:center;flex-wrap:wrap;width:100%}
   .period-bar label{display:none}
   .date-input{min-width:0;flex:1 1 118px;padding:6px 8px;font-size:12px}
   .period-sep{padding:0}
   .preset-btn{padding:6px 9px;font-size:11px}
-  .range-info{width:100%;order:99;padding-left:0;margin-top:2px}
+  .range-info{width:100%;text-align:center;padding-left:0;margin-top:2px}
+
   .status-banner{margin:10px 14px 0;padding:10px 12px;font-size:11.5px}
   .pub-grid,.paginas-grid{grid-template-columns:1fr}
   .sec-title{font-size:12px}
 }
 @media(max-width:380px){
   .kpi-grid{grid-template-columns:1fr 1fr}
-  .logo-act img{height:32px}
+  .logo-act img{height:50px}
 }
 .paginas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:14px}
 .pagina-card{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#141d18;border:1px solid #213127;border-radius:12px;padding:18px 20px;text-decoration:none;transition:all .15s}
@@ -167,16 +178,19 @@ tr:hover td{background:rgba(29,185,84,.04)}
   </div>
   <div class="topbar-controls">
     <div class="period-bar">
-      <label>De</label>
-      <input type="date" id="dateFrom" class="date-input" onchange="onDateChange()">
-      <span class="period-sep">→</span>
-      <input type="date" id="dateTo" class="date-input" onchange="onDateChange()">
-      <button class="preset-btn" onclick="setPreset(7,this)">7d</button>
-      <button class="preset-btn" onclick="setPreset(14,this)">14d</button>
-      <button class="preset-btn" onclick="setPreset(30,this)">30d</button>
-      <button class="preset-btn active" id="btn-all" onclick="setPreset('all',this)">Tudo</button>
+      <div class="date-range-group">
+        <label>De</label>
+        <input type="date" id="dateFrom" class="date-input" onchange="onDateChange()">
+        <span class="period-sep">→</span>
+        <input type="date" id="dateTo" class="date-input" onchange="onDateChange()">
+      </div>
+      <div class="preset-group">
+        <button class="preset-btn" id="btn-7" onclick="setPreset(7,this)">7d</button>
+        <button class="preset-btn" id="btn-14" onclick="setPreset(14,this)">14d</button>
+        <button class="preset-btn" id="btn-30" onclick="setPreset(30,this)">30d</button>
+        <button class="preset-btn active" id="btn-all" onclick="setPreset('all',this)">Tudo</button>
+      </div>
       <span class="range-info" id="range-info"></span>
-      <button class="preset-btn" onclick="loadData()" style="margin-left:4px">🔄 Atualizar</button>
     </div>
   </div>
 </div>
@@ -398,8 +412,8 @@ const CONFIG = {
   // O dashboard de PV é este mesmo arquivo com FUNIL:'PV'.
   FUNIL: 'QUIZ',
   FUNIS: {
-    QUIZ: { nome:'Quiz', sub:'Captação por formulário → página de vendas', temLeads:true },
-    PV:   { nome:'Página de Venda', sub:'Venda direta', temLeads:false },
+    QUIZ: { nome:'Quiz', temLeads:true },
+    PV:   { nome:'Página de Venda', temLeads:false },
   },
 
   MAPA: {
@@ -504,7 +518,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   const b = document.getElementById('brand-title');
   if(b) b.textContent = ico + ' Funil ' + F.nome + ' · ' + CONFIG.CLIENTE;
   const s = document.getElementById('brand-subtitle');
-  if(s) s.textContent = F.sub + ' — Perpétuo · AC Gestão de Tráfego · ' + CONFIG.ANO;
+  if(s) s.textContent = 'Perpétuo · AC Gestão de Tráfego · ' + CONFIG.ANO;
 
   // Páginas testadas — vivem na própria aba agora, não escondidas no cabeçalho
   renderPaginas();
@@ -516,6 +530,9 @@ document.addEventListener('DOMContentLoaded', ()=>{
     if(tl) tl.remove();
   }
   loadData();
+  // Atualização automática em segundo plano — sem botão manual, sem piscar
+  // a tela, e sem mexer no período que a pessoa tiver selecionado.
+  setInterval(()=>loadData(true), 5*60*1000);
 });
 
 function renderPaginas(){
@@ -538,6 +555,7 @@ let GROWS = [], SALES = [], DIAS = [], LEADS = [];
 let GROWS_RAW = [];   // todas as linhas do Gerenciador, inclusive zeradas (só p/ ler status)
 let CAMPANHAS = [];   // status atual de cada campanha
 let currentFrom = null, currentTo = null;
+let currentPreset = 'all';   // 'all' | number de dias | 'custom' — usado pra saber se a atualização automática pode reajustar o período
 let criStatusFilter = 'todos', criSortBy = 'inv';
 let pubStatusFilter = 'todos', pubSortBy = 'inv';
 let chartInvSemanal=null, chartCtrSemanal=null, chartInvMensal=null, chartCtrMensal=null;
@@ -920,8 +938,8 @@ function showError(msg){
   if(o){ o.style.display='flex'; document.getElementById('loading-msg').textContent = '⚠️ ' + msg; }
 }
 
-async function loadData(){
-  showLoading('Conectando com a planilha...');
+async function loadData(silent){
+  if(!silent) showLoading('Conectando com a planilha...');
   try{
     DESCARTES = []; FORA_DO_FUNIL = new Set(); VENDAS_OUTRAS = [];
     const [webhookText, gerText, leadsText] = await Promise.all([
@@ -936,9 +954,12 @@ async function loadData(){
     LEADS = CONFIG.FUNIS[CONFIG.FUNIL].temLeads ? buildLEADS(lRows) : [];
     DIAS = buildDIAS(GROWS, LEADS, SALES);
     CAMPANHAS = buildCAMPANHAS();
-    setupDateDefaults();
+    reaplicarFiltroPeriodo();
   }catch(e){
-    showError('Falha ao carregar a planilha: ' + e.message);
+    // Atualização automática que falha em segundo plano não deve interromper
+    // quem já está vendo o painel — só a carga inicial mostra o erro em tela cheia.
+    if(!silent) showError('Falha ao carregar a planilha: ' + e.message);
+    else console.warn('[dashboard] atualização automática falhou:', e.message);
     return;
   }
   // A partir daqui os dados já estão prontos; se algo quebrar no desenho de
@@ -946,29 +967,31 @@ async function loadData(){
   try{ renderAll(); }
   catch(e){
     console.error('[dashboard] erro ao renderizar:', e);
-    showError('Dados carregados, mas houve um erro ao desenhar o painel: ' + e.message);
+    if(!silent) showError('Dados carregados, mas houve um erro ao desenhar o painel: ' + e.message);
     return;
   }
-  hideLoading();
+  if(!silent) hideLoading();
 }
 
-function setupDateDefaults(){
-  const allDates = [...DIAS.map(d=>d.data), ...SALES.map(s=>s.data)].filter(ehDataISO).sort();
-  const first = allDates[0] || DATA_MINIMA;
-  const last = allDates[allDates.length-1] || DATA_MINIMA;
-  document.getElementById('dateFrom').value = first;
-  document.getElementById('dateTo').value = last;
-  currentFrom = first; currentTo = last;
+// Reaplica o preset ativo (all/7/14/30) depois de recarregar os dados, sem
+// atropelar um período que o usuário tenha digitado manualmente ("custom").
+function reaplicarFiltroPeriodo(){
+  if(currentPreset === 'custom') return;
+  const btn = currentPreset === 'all' ? document.getElementById('btn-all')
+            : document.getElementById('btn-'+currentPreset);
+  setPreset(currentPreset, btn);
 }
 
 // ── Date filter ──────────────────────────────────────────────────
 function onDateChange(){
   currentFrom = document.getElementById('dateFrom').value || null;
   currentTo = document.getElementById('dateTo').value || null;
+  currentPreset = 'custom';
   document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
   renderAll();
 }
 function setPreset(days, btn){
+  currentPreset = days;
   const allDates = [...DIAS.map(d=>d.data), ...SALES.map(s=>s.data)].filter(ehDataISO).sort();
   const first = allDates[0] || DATA_MINIMA;
   const last = allDates[allDates.length-1] || DATA_MINIMA;
