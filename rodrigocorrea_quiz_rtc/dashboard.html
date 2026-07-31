@@ -190,6 +190,7 @@ tr:hover td{background:rgba(29,185,84,.04)}
     <thead><tr><th>Campanha</th><th>Status</th><th>Última veiculação</th><th>Invest. total</th><th>Dias com entrega</th></tr></thead>
     <tbody id="camp-status-tbody"></tbody>
   </table></div>
+  <div id="diagnostico" style="display:none"></div>
 </div>
 
 <!-- VISÃO GERAL -->
@@ -313,7 +314,7 @@ tr:hover td{background:rgba(29,185,84,.04)}
 // ╚══════════════════════════════════════════════════════════════════╝
 const CONFIG = {
   CLIENTE: 'Rodrigo Correa',
-  PRODUTO: 'Quiz + RTC',
+  PRODUTO: 'RTC — Quiz',
   ANO: '2026',
 
   SHEET_ID: '1CpsqgS9XTh4_WYZJyAhEwGBrUKzrgmWR5qXiKRoktqw',
@@ -335,7 +336,7 @@ const CONFIG = {
   W: {
     data: 0, produto: 1, status: 2, cliente: 3, email: 4, valor: 5,
     idTransacao: 6, idCompraPai: 7, ehOrderBump: 8,
-    utmSource: 9, utmMedium: 10, utmCampaign: 11, utmContent: 12,
+    utmSource: 9, utmMedium: 10, utmCampaign: 11, utmContent: 12, utmTerm: 13,
   },
 
   // Colunas do Gerenciador (0-based) — layout customizado (Make)
@@ -343,6 +344,61 @@ const CONFIG = {
     date: 0, campaign: 2, adset: 3, ad: 4, link: 5,
     inv: 6, imp: 7, reach: 8, cliques: 9, pv: 10, ck: 11, leads: 12,
     statusCampaign: 13, statusAdset: 14, statusAd: 15, publico: 16,
+  },
+
+
+  // ── Separação de funis (Quiz x Página de Venda) ───────────────────
+  // Este arquivo renderiza SÓ o Quiz. Tudo marcado como PV é excluído
+  // por completo — não aparece nem como "não classificado".
+  // O dashboard de PV é este mesmo arquivo com FUNIL:'PV'.
+  FUNIL: 'QUIZ',
+  FUNIS: {
+    QUIZ: { nome:'Quiz', sub:'Captação por formulário → página de vendas', temLeads:true },
+    PV:   { nome:'Página de Venda', sub:'Venda direta', temLeads:false },
+  },
+
+  MAPA: {
+    // IDs do Meta (campanhas e conjuntos). É por aqui que a venda é atribuída:
+    // as UTMs trazem ID, não nome, então rename de campanha não quebra nada.
+    ids: {
+      // ── QUIZ ──
+      '120245398409100027':'QUIZ','120245398409090027':'QUIZ',  // PP120626 QUENTE
+      '120245401865270027':'QUIZ','120245401865260027':'QUIZ',  // PP120626 FRIO
+      '120245662677140027':'QUIZ','120245662677180027':'QUIZ',  // PP170626 FRIO
+      '120245999604600027':'QUIZ','120245999604640027':'QUIZ',  // PP220626 QUENTE
+      '120246684531000027':'QUIZ','120246684531030027':'QUIZ',  // PP010726
+      '120246835553170027':'QUIZ','120246835553180027':'QUIZ',  // PP050726 QUENTE
+      '120246836276530027':'QUIZ','120246836195880027':'QUIZ',
+      // ── PV ──
+      '120246078113300027':'PV','120246078113310027':'PV',      // PP230626 FRIO
+      '120246088105670027':'PV','120246088105660027':'PV',      // PP230626 QUENTE
+      '120246678271420027':'PV',
+      '120246904910580027':'PV','120246904910570027':'PV',      // PP070726 Teste Página
+      '120247145182420027':'PV','120246905937890027':'PV',
+      '120247113538270027':'PV','120247113974410027':'PV',      // PP130726 Teste Página TP
+      '120247113538310027':'PV',
+      '120247383159320027':'PV','120247490126110027':'PV',      // PP240726 VSL  (ATIVA)
+      '120247383527760027':'PV','120247384031810027':'PV',
+      '120247383540570027':'PV','120247383159400027':'PV',
+    },
+
+    // As linhas antigas do Gerenciador foram gravadas ANTES do rename e não
+    // têm [QUIZ]/[PV]. O código da campanha (PPddmmaa) nunca muda, então é
+    // ele que resgata o histórico de junho.
+    codigos: [
+      { contem:['PP120626'], funil:'QUIZ' },
+      { contem:['PP170626'], funil:'QUIZ' },
+      { contem:['PP220626'], funil:'QUIZ' },
+      { contem:['PP010726'], funil:'QUIZ' },
+      { contem:['PP050726'], funil:'QUIZ' },
+      { contem:['PP230626'], funil:'PV'   },  // inclui a QUENTE, que não tinha tag
+      { contem:['PP070726'], funil:'PV'   },
+      { contem:['PP130726'], funil:'PV'   },
+      { contem:['PP240726'], funil:'PV'   },
+    ],
+
+    // Fora do perpétuo: lançamento de janeiro a março.
+    excluir: ['RC - WORKSHOP'],
   },
 
   STATUS_APROVADO: ['APPROVED', 'COMPLETE', 'CONFIRMED', 'PAGO'],
@@ -363,6 +419,11 @@ const CONFIG = {
     ZERO_COMO_TRACO: true,
     // Alerta quando a campanha está ATIVA mas sem entrega há N dias.
     DIAS_SEM_ENTREGA_ALERTA: 2,
+    // Fuso da conta de anúncios / da operação. Timestamps que chegam em UTC
+    // (terminados em "Z") são convertidos para este fuso antes de virar dia.
+    FUSO_HORAS: -3,
+    // Data posterior a hoje é erro de origem, não dado: descarta e reporta.
+    IGNORAR_DATAS_FUTURAS: true,
   },
 };
 
@@ -371,11 +432,20 @@ const SHEET_ID = CONFIG.SHEET_ID, GERENCIADOR_SHEET = CONFIG.GERENCIADOR_SHEET,
       G = CONFIG.G, W = CONFIG.W;
 
 document.addEventListener('DOMContentLoaded', ()=>{
-  document.title = CONFIG.PRODUTO + ' · ' + CONFIG.CLIENTE + ' — AC Gestão de Tráfego';
+  const F = CONFIG.FUNIS[CONFIG.FUNIL];
+  const ico = CONFIG.FUNIL === 'QUIZ' ? '📝' : '🛒';
+  document.title = F.nome + ' · ' + CONFIG.CLIENTE + ' — AC Gestão de Tráfego';
   const b = document.getElementById('brand-title');
-  if(b) b.textContent = '📦 ' + CONFIG.PRODUTO + ' · ' + CONFIG.CLIENTE;
+  if(b) b.textContent = ico + ' Funil ' + F.nome + ' · ' + CONFIG.CLIENTE;
   const s = document.getElementById('brand-subtitle');
-  if(s) s.textContent = 'Dashboard de Performance — Perpétuo · AC Gestão de Tráfego · ' + CONFIG.ANO;
+  if(s) s.textContent = F.sub + ' — Perpétuo · AC Gestão de Tráfego · ' + CONFIG.ANO;
+
+  // Sem formulário, sem aba de leads
+  if(!F.temLeads){
+    document.querySelectorAll('[data-tab="leads"]').forEach(el=>el.style.display='none');
+    const tl = document.getElementById('tab-leads');
+    if(tl) tl.remove();
+  }
   loadData();
 });
 
@@ -431,25 +501,80 @@ function parseCSV(text){
   return rows;
 }
 function isEmptyRow(r){ return r.every(f=>String(f).trim()===''); }
-function parseFlexNum(str){
+// Núcleo do parse numérico: aceita "18,88", "R$ 18,88", "1.234,56", "R$ 1.234,56",
+// com espaço normal ou não-quebrável. A planilha troca de formato no meio
+// (a partir de 23/06 o Make passou a gravar com "R$ "), então isso é obrigatório.
+function limparNumero(str){
   if(str==null) return 0;
   let s = String(str).trim();
   if(s==='') return 0;
+  const negativo = /^\(.*\)$/.test(s) || s.includes('-');
+  s = s.replace(/[^\d.,]/g, '');          // tira R$, %, espaços, letras
+  if(s==='') return 0;
   if(s.includes(',') && s.includes('.')) s = s.replace(/\./g,'').replace(',','.');
-  else if(s.includes(',') && !s.includes('.')) s = s.replace(',','.');
+  else if(s.includes(',')) s = s.replace(',','.');
   const n = parseFloat(s);
-  let val = isNaN(n) ? 0 : n;
-  if(CONFIG.VALORES_EM_CENTAVOS) val = val/100;
-  return val;
+  if(isNaN(n)) return 0;
+  return negativo ? -n : n;
+}
+function parseFlexNum(str){
+  const val = limparNumero(str);
+  return CONFIG.VALORES_EM_CENTAVOS ? val/100 : val;
+}
+// Número de série do Google Sheets (dia 1 = 31/12/1899) → 'AAAA-MM-DD'.
+// A parte decimal é a hora no fuso da planilha: descartada, só interessa o dia.
+function serialParaISO(serial){
+  if(!isFinite(serial)) return '';
+  const dias = Math.floor(serial);
+  if(dias < 20000 || dias > 80000) return '';   // fora de ~1954-2119: não é data
+  const d = new Date((dias - 25569) * 86400000);
+  return isNaN(d.getTime()) ? '' : d.toISOString().slice(0,10);
 }
 function parseFlexDate(str){
-  if(!str) return '';
+  if(str==null) return '';
   const s = String(str).trim();
-  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  if(s==='') return '';
+  // ISO com hora e fuso explícito (…Z ou …-03:00) → converte para o fuso da operação.
+  // Sem isso, um lead das 22h de terça (01h UTC de quarta) cai no dia errado.
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[T ]\d{2}:\d{2}[\d:.]*\s*(Z|[+-]\d{2}:?\d{2})$/i);
+  if(m){
+    const d = new Date(s.replace(' ','T'));
+    if(!isNaN(d.getTime()))
+      return new Date(d.getTime() + (CONFIG.DADOS.FUSO_HORAS||0)*3600000).toISOString().slice(0,10);
+  }
+  // AAAA-MM-DD (com ou sem hora, sem fuso)
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  // DD/MM/AAAA (com ou sem hora)
   m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if(m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
-  return s;
+  // Formato interno do gviz: Date(2026,6,30) — mês 0-based
+  m = s.match(/^Date\((\d{4}),\s*(\d{1,2}),\s*(\d{1,2})/i);
+  if(m) return `${m[1]}-${String(+m[2]+1).padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  // Número de série: 46233 / 46233,38699 / 46233.38699
+  m = s.match(/^(\d{5})(?:[.,](\d+))?$/);
+  if(m) return serialParaISO(parseFloat(m[1] + '.' + (m[2]||'0')));
+  return '';   // não reconhecido: descarta a linha em vez de sujar o período
+}
+// Garante que só datas reais entrem no cálculo do período
+function ehDataISO(s){ return /^\d{4}-\d{2}-\d{2}$/.test(String(s||'')); }
+
+// ── Datas descartadas (para achar a célula suja na planilha) ──────
+let DESCARTES = [];
+let FORA_DO_FUNIL = new Set();   // campanhas sem classificação
+let VENDAS_OUTRAS = [];          // vendas de outro funil / sem atribuição
+function dataUtil(origem, bruto){
+  const iso = parseFlexDate(bruto);
+  const cru = String(bruto==null?'':bruto).trim();
+  if(!iso){
+    if(cru !== '') DESCARTES.push({origem, valor:cru, motivo:'formato de data não reconhecido'});
+    return '';
+  }
+  if(CONFIG.DADOS.IGNORAR_DATAS_FUTURAS && iso > hojeISO()){
+    DESCARTES.push({origem, valor:cru, motivo:`data futura (lida como ${iso})`});
+    return '';
+  }
+  return iso;
 }
 function isOBFlag(str){
   if(str==null) return false;
@@ -458,6 +583,34 @@ function isOBFlag(str){
 }
 function isPaused(s){ return String(s||'').toUpperCase().includes('PAUSED'); }
 function isTrafego(s){ return (s.utmSource||'').toLowerCase().replace(/[\s_-]/g,'') === 'metaads'; }
+
+// ── Classificação de funil ────────────────────────────────────────
+// Campanha: exclusão > tag no nome > código PPddmmaa. Retorna '' se não
+// couber em nenhum funil (aí a linha não entra em dashboard nenhum).
+function funilDaCampanha(nome){
+  const n = String(nome||'').toUpperCase();
+  if(!n) return '';
+  if(CONFIG.MAPA.excluir.some(x=>n.includes(x.toUpperCase()))) return '';
+  if(n.includes('[QUIZ]')) return 'QUIZ';
+  if(n.includes('[PV]'))   return 'PV';
+  for(const r of CONFIG.MAPA.codigos){
+    if(r.contem.every(c=>n.includes(c.toUpperCase()))) return r.funil;
+  }
+  return '';
+}
+// Venda: ID nas UTMs manda. Nome só entra como último recurso.
+function funilDaVenda(s){
+  const campos = [s.utmCampaign, s.utmTerm, s.utmMedium, s.utmContent];
+  for(const campo of campos){
+    const ids = String(campo||'').match(/\d{15,}/g) || [];
+    for(const id of ids){ if(CONFIG.MAPA.ids[id]) return CONFIG.MAPA.ids[id]; }
+  }
+  const txt = campos.join(' ').toUpperCase();
+  if(txt.includes('QUIZ')) return 'QUIZ';
+  if(txt.includes('PV'))   return 'PV';
+  return '';
+}
+function rotuloFunil(f){ return (CONFIG.FUNIS[f]||{}).nome || f || 'não classificado'; }
 function normalize(s){ return String(s||'').trim().toLowerCase(); }
 
 const ZERO_TRACO = () => CONFIG.DADOS.ZERO_COMO_TRACO;
@@ -501,7 +654,7 @@ function diaTemAtividade(d){
 // ── Build datasets ───────────────────────────────────────────────
 function buildGROWS(rows){
   const all = rows.filter(r=>!isEmptyRow(r)).map(r=>({
-    date: parseFlexDate(r[G.date]),
+    date: dataUtil('Gerenciador', r[G.date]),
     campaign: r[G.campaign]||'', adset: r[G.adset]||'', ad: r[G.ad]||'', link: r[G.link]||'',
     inv: parseFlexNumPlain(r[G.inv]), imp: parseFlexNumPlain(r[G.imp]), reach: parseFlexNumPlain(r[G.reach]),
     cliques: parseFlexNumPlain(r[G.cliques]), pv: parseFlexNumPlain(r[G.pv]), ck: parseFlexNumPlain(r[G.ck]), leads: parseFlexNumPlain(r[G.leads]),
@@ -511,27 +664,28 @@ function buildGROWS(rows){
     publico: r[G.publico]||'',
   })).filter(g=>g.date && g.date >= DATA_MINIMA);
 
+  // Só o que pertence a este funil. O resto é de outro dashboard.
+  const doFunil = all.filter(g=>{
+    const f = funilDaCampanha(g.campaign);
+    if(f === CONFIG.FUNIL) return true;
+    if(f === '') FORA_DO_FUNIL.add(g.campaign || '(sem nome)');
+    return false;
+  });
+
   // Guarda tudo (inclusive linhas zeradas) — é delas que sai o status atual
-  GROWS_RAW = all;
+  GROWS_RAW = doFunil;
 
   // Descarta linhas sem investimento e sem nenhuma métrica: campanha pausada
   // que o Make continua gravando todo dia não vira dado no dashboard.
-  return CONFIG.DADOS.IGNORAR_LINHAS_ZERADAS ? all.filter(temAtividade) : all;
+  return CONFIG.DADOS.IGNORAR_LINHAS_ZERADAS ? doFunil.filter(temAtividade) : doFunil;
 }
 // Gerenciador inv/spend usa formatação BR mesmo sem CONFIG.VALORES_EM_CENTAVOS (sempre reais)
-function parseFlexNumPlain(str){
-  if(str==null) return 0;
-  let s = String(str).trim();
-  if(s==='') return 0;
-  if(s.includes(',') && s.includes('.')) s = s.replace(/\./g,'').replace(',','.');
-  else if(s.includes(',') && !s.includes('.')) s = s.replace(',','.');
-  const n = parseFloat(s);
-  return isNaN(n) ? 0 : n;
-}
+// Gerenciador sempre em reais (não aplica VALORES_EM_CENTAVOS)
+function parseFlexNumPlain(str){ return limparNumero(str); }
 
 function buildSALES(rows){
   const lines = rows.filter(r=>!isEmptyRow(r)).map(r=>({
-    data: parseFlexDate(r[W.data]),
+    data: dataUtil('Webhook', r[W.data]),
     produto: r[W.produto]||'',
     status: (r[W.status]||'').toUpperCase().trim(),
     nome: r[W.cliente]||'', email: r[W.email]||'',
@@ -541,6 +695,7 @@ function buildSALES(rows){
     isOB: isOBFlag(r[W.ehOrderBump]),
     utmSource: r[W.utmSource]||'', utmMedium: r[W.utmMedium]||'',
     utmCampaign: r[W.utmCampaign]||'', utmContent: r[W.utmContent]||'',
+    utmTerm: r[W.utmTerm]||'',
   })).filter(l=> l.data && l.data >= DATA_MINIMA && CONFIG.STATUS_APROVADO.includes(l.status));
 
   const groups = {};
@@ -565,14 +720,21 @@ function buildSALES(rows){
       fatTotal: fatPrincipal+fatOB, fatPrincipal, fatOB, obCount: obLines.length,
       utmSource: matchPrincipal.utmSource, utmMedium: matchPrincipal.utmMedium,
       utmCampaign: matchPrincipal.utmCampaign, utmContent: matchPrincipal.utmContent,
+      utmTerm: matchPrincipal.utmTerm,
     });
   });
-  return sales.sort((a,b)=> b.data.localeCompare(a.data));
+  const doFunil = [];
+  sales.forEach(v=>{
+    v.funil = funilDaVenda(v);
+    if(v.funil === CONFIG.FUNIL) doFunil.push(v);
+    else VENDAS_OUTRAS.push(v);
+  });
+  return doFunil.sort((a,b)=> b.data.localeCompare(a.data));
 }
 
 function buildLEADS(rows){
   return rows.filter(r=>!isEmptyRow(r)).map(r=>({
-    data: parseFlexDate(r[CONFIG.L.timestamp]),
+    data: dataUtil('Leads (Quiz)', r[CONFIG.L.timestamp]),
     nome: r[CONFIG.L.nome]||'', email: r[CONFIG.L.email]||'',
     resultadoChave: r[CONFIG.L.resultadoChave]||'', resultadoLabel: r[CONFIG.L.resultadoLabel]||'',
   })).filter(l=> l.data && l.data >= DATA_MINIMA);
@@ -636,6 +798,7 @@ function showError(msg){
 async function loadData(){
   showLoading('Conectando com a planilha...');
   try{
+    DESCARTES = []; FORA_DO_FUNIL = new Set(); VENDAS_OUTRAS = [];
     const [webhookText, gerText, leadsText] = await Promise.all([
       fetchSheetCSV(WEBHOOK_SHEET), fetchSheetCSV(GERENCIADOR_SHEET),
       fetchSheetCSV(CONFIG.LEADS_SHEET_NAME, CONFIG.LEADS_SHEET_ID)
@@ -645,7 +808,7 @@ async function loadData(){
     const lRows = parseCSV(leadsText).slice(1);
     GROWS = buildGROWS(gRows);
     SALES = buildSALES(wRows);
-    LEADS = buildLEADS(lRows);
+    LEADS = CONFIG.FUNIS[CONFIG.FUNIL].temLeads ? buildLEADS(lRows) : [];
     DIAS = buildDIAS(GROWS, LEADS, SALES);
     CAMPANHAS = buildCAMPANHAS();
     setupDateDefaults();
@@ -657,7 +820,7 @@ async function loadData(){
 }
 
 function setupDateDefaults(){
-  const allDates = [...DIAS.map(d=>d.data), ...SALES.map(s=>s.data)].filter(Boolean).sort();
+  const allDates = [...DIAS.map(d=>d.data), ...SALES.map(s=>s.data)].filter(ehDataISO).sort();
   const first = allDates[0] || DATA_MINIMA;
   const last = allDates[allDates.length-1] || DATA_MINIMA;
   document.getElementById('dateFrom').value = first;
@@ -673,7 +836,7 @@ function onDateChange(){
   renderAll();
 }
 function setPreset(days, btn){
-  const allDates = [...DIAS.map(d=>d.data), ...SALES.map(s=>s.data)].filter(Boolean).sort();
+  const allDates = [...DIAS.map(d=>d.data), ...SALES.map(s=>s.data)].filter(ehDataISO).sort();
   const first = allDates[0] || DATA_MINIMA;
   const last = allDates[allDates.length-1] || DATA_MINIMA;
   document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('active'));
@@ -736,6 +899,7 @@ function renderStatus(){
   }
 
   if(!banner) return;
+  renderDiagnostico();
   if(CAMPANHAS.length === 0){ banner.style.display='none'; if(badge) badge.style.display='none'; return; }
 
   const ativas = CAMPANHAS.filter(c=>c.ativa);
@@ -771,6 +935,28 @@ function renderStatus(){
 }
 
 // ── Tráfego ──────────────────────────────────────────────────────
+// Mostra as datas que a planilha mandou fora do padrão, com o valor cru,
+// para dar pra achar a célula na origem.
+function renderDiagnostico(){
+  const el = document.getElementById('diagnostico');
+  if(!el) return;
+  if(!DESCARTES.length){ el.style.display='none'; el.innerHTML=''; return; }
+  const grupos = {};
+  DESCARTES.forEach(d=>{
+    const k = d.origem+'|'+d.motivo+'|'+d.valor;
+    grupos[k] = grupos[k] ? {...grupos[k], n:grupos[k].n+1} : {...d, n:1};
+  });
+  const linhas = Object.values(grupos).slice(0, 12).map(d=>
+    `<li><strong>${d.origem}</strong> — valor <code>${d.valor}</code> · ${d.motivo}${d.n>1?` · ${d.n}×`:''}</li>`
+  ).join('');
+  el.className = 'status-banner alerta';
+  el.style.display = 'flex';
+  el.innerHTML = `<span class="sb-ico">🔎</span><div><strong>${DESCARTES.length} linha(s) ignorada(s) por data inválida.</strong>`
+    + ` Não entraram em nenhum cálculo. Vale corrigir na origem:`
+    + `<ul style="margin:6px 0 0 18px;line-height:1.7">${linhas}</ul></div>`;
+  console.warn('[dashboard] datas descartadas:', DESCARTES);
+}
+
 function renderTrafego(from, to){
   const fSales = filterByDate(SALES, 'data', from, to);
   const fGrows = filterByDate(GROWS, 'date', from, to);
