@@ -283,7 +283,7 @@ tr:hover td{background:rgba(29,185,84,.04)}
   </div>
   <div class="pub-grid" id="pub-grid"></div>
   <div class="tbl-wrap"><table>
-    <thead><tr><th>Público</th><th>Invest.</th><th>Impr.</th><th>Cliques</th><th>CTR</th><th>Vendas</th><th>Fat.</th><th>ROAS</th></tr></thead>
+    <thead><tr><th>Público</th><th>Invest.</th><th>Impr.</th><th>Cliques</th><th>CTR</th><th>Leads (Meta)</th><th>CPL</th><th>Vendas</th><th>Fat.</th><th>ROAS</th></tr></thead>
     <tbody id="pub-tbody"></tbody>
   </table></div>
 </div>
@@ -334,7 +334,7 @@ const CONFIG = {
   // Quando o dash de PV for feito, isso vira uma lista — cada criativo
   // aponta pra uma página diferente testada.
   PAGINAS: [
-    { nome: 'Quiz', url: '' },   // ← colar o link da página do quiz aqui
+    { nome: 'Quiz', url: 'https://rodrigocorreamentor.lovable.app/' },
   ],
 
   PRODUTO_NOME: 'roube o trabalho do seu chefe™',
@@ -410,6 +410,27 @@ const CONFIG = {
 
     // Fora do perpétuo: lançamento de janeiro a março.
     excluir: ['RC - WORKSHOP'],
+
+    // Nome exato de cada campanha → ID no Meta (puxado direto da conta,
+    // nível campanha — não misturar com ID de conjunto/anúncio).
+    // Serve pra abrir a campanha direto no Gerenciador de Anúncios.
+    adAccountId: '24929947423351926',
+    campanhas: [
+      {id:'120247383159320027', nome:'[AC] [Venda] [RTC] [PV] [VSL] [FRIO] PP240726'},
+      {id:'120247113538270027', nome:'[AC] [Venda] [PV] [Teste Pagina] [TP] [RTC] [FRIO] PP130726'},
+      {id:'120246904910580027', nome:'[AC] [Venda] [PV] [Teste Pagina] [RTC] [FRIO] PP070726'},
+      {id:'120246835553170027', nome:'[AC] [Venda] [QUIZ] [RTC] [QUENTE] PP050726'},
+      {id:'120246684531000027', nome:'[AC] [Venda] [QUIZ] [RTC] PP010726'},
+      {id:'120246088105670027', nome:'[AC] [Venda] [RTC] [PV] [QUENTE] PP230626'},
+      {id:'120246078113300027', nome:'[AC] [Venda] [RTC] [PV] [FRIO] PP230626'},
+      {id:'120245999604600027', nome:'[AC] [Venda] [QUIZ] [RTC] [QUENTE] PP220626'},
+      {id:'120245662677140027', nome:'[AC] [Venda] [QUIZ] [RTC] [FRIO] PP170626'},
+      {id:'120245401865270027', nome:'[AC] [Venda] [QUIZ] [RTC] [FRIO] PP120626'},
+      {id:'120245398409100027', nome:'[AC] [Venda] [QUIZ] [RTC] [QUENTE] PP120626'},
+      {id:'120238005904580027', nome:'RC - WORKSHOP 01 - CBO - VIDEO X2'},
+      {id:'120237426436890027', nome:'RC - WORKSHOP 01 - CBO - VIDEO X1'},
+      {id:'120237423584080027', nome:'RC - WORKSHOP 01 - CBO - ESTÁTICO X1'},
+    ],
   },
 
   STATUS_APROVADO: ['APPROVED', 'COMPLETE', 'CONFIRMED', 'PAGO'],
@@ -644,6 +665,33 @@ function funilDaVenda(s){
   return '';
 }
 function rotuloFunil(f){ return (CONFIG.FUNIS[f]||{}).nome || f || 'não classificado'; }
+
+// ── Link pro Gerenciador de Anúncios ──────────────────────────────
+// Tenta bater pelo nome exato (funciona pra campanhas já renomeadas);
+// se não achar (linha antiga, de antes do rename), tenta pelo código
+// PPddmmaa + temperatura (QUENTE/FRIO), só quando isso resolve sem ambiguidade.
+function urlAdsManager(id){
+  return `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${CONFIG.MAPA.adAccountId}&selected_campaign_ids=${id}`;
+}
+function linkDaCampanha(nome){
+  const lista = CONFIG.MAPA.campanhas || [];
+  const n = normalize(nome);
+  let alvo = lista.find(c => normalize(c.nome) === n);
+  if(!alvo){
+    const codeM = String(nome||'').match(/PP\d{6}/i);
+    if(codeM){
+      const code = codeM[0].toUpperCase();
+      const tempM = String(nome||'').match(/QUENTE|FRIO/i);
+      const temp = tempM ? tempM[0].toUpperCase() : null;
+      const candidatos = lista.filter(c=>{
+        const cn = c.nome.toUpperCase();
+        return cn.includes(code) && (!temp || cn.includes(temp));
+      });
+      if(candidatos.length === 1) alvo = candidatos[0];
+    }
+  }
+  return alvo ? urlAdsManager(alvo.id) : null;
+}
 function normalize(s){ return String(s||'').trim().toLowerCase(); }
 
 const ZERO_TRACO = () => CONFIG.DADOS.ZERO_COMO_TRACO;
@@ -939,7 +987,11 @@ function renderStatus(){
       const cls = c.ativa ? 'ativa' : (c.pausada ? 'pausada' : 'desconhecida');
       const txt = c.ativa ? 'Ativa' : (c.pausada ? 'Pausada' : 'Sem status');
       const ent = c.ultimaEntrega ? `${fmtData(c.ultimaEntrega)} <span class="dim">(${textoDiasDesde(c.ultimaEntrega)})</span>` : '—';
-      return `<tr><td>${c.nome}</td><td><span class="badge-status ${cls}">${txt}</span></td><td>${ent}</td><td>${fmtBRL(c.inv)}</td><td>${fmtInt(c.diasEntrega)}</td></tr>`;
+      const url = linkDaCampanha(c.nome);
+      const nomeHtml = url
+        ? `<a href="${url}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-decoration-color:rgba(29,185,84,.4)">${c.nome} ↗</a>`
+        : c.nome;
+      return `<tr><td>${nomeHtml}</td><td><span class="badge-status ${cls}">${txt}</span></td><td>${ent}</td><td>${fmtBRL(c.inv)}</td><td>${fmtInt(c.diasEntrega)}</td></tr>`;
     }).join('') : '<tr><td colspan="5" class="empty-state">Nenhuma campanha encontrada no Gerenciador.</td></tr>';
   }
 
@@ -1207,9 +1259,9 @@ function buildCriPubMaps(from, to){
   const pubMap = {};
   fGrows.forEach(g=>{
     const key = g.adset || '(sem nome)';
-    if(!pubMap[key]) pubMap[key] = {nome:g.adset, inv:0, imp:0, cliques:0, pv:0, ck:0};
+    if(!pubMap[key]) pubMap[key] = {nome:g.adset, inv:0, imp:0, cliques:0, pv:0, ck:0, leads:0};
     const p = pubMap[key];
-    p.inv+=g.inv; p.imp+=g.imp; p.cliques+=g.cliques; p.pv+=g.pv; p.ck+=g.ck;
+    p.inv+=g.inv; p.imp+=g.imp; p.cliques+=g.cliques; p.pv+=g.pv; p.ck+=g.ck; p.leads+=(g.leads||0);
     p.statusAdset=g.statusAdset; p.statusCampaign=g.statusCampaign; p.publico=g.publico;
   });
   const publicos = Object.values(pubMap).map(p=>{
@@ -1219,6 +1271,7 @@ function buildCriPubMaps(from, to){
       vendas: vendas.length, fat,
       roas: p.inv>0 ? fat/p.inv : 0,
       ctr: p.imp>0 ? p.cliques/p.imp*100 : 0,
+      cpl: p.leads>0 ? p.inv/p.leads : 0,
       ativo: !isPaused(p.statusAdset) && !isPaused(p.statusCampaign) && (p.statusAdset!==''||p.statusCampaign!=='')
     };
   });
@@ -1273,7 +1326,7 @@ function renderPublicos(from, to){
   const tbody = document.getElementById('pub-tbody');
   if(publicos.length===0){
     grid.innerHTML = '<div class="empty-state">Nenhum público no período selecionado.</div>';
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Sem dados.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Sem dados.</td></tr>';
     return;
   }
   grid.innerHTML = publicos.map(p=>`
@@ -1284,11 +1337,13 @@ function renderPublicos(from, to){
       </div>
       <div class="pub-metrics">
         <div class="pub-metric"><div class="pub-metric-val neutral">${fmtBRL(p.inv)}</div><div class="pub-metric-lbl">Invest.</div></div>
+        <div class="pub-metric"><div class="pub-metric-val neutral">${fmtInt(p.leads)}</div><div class="pub-metric-lbl">Leads (Meta)</div></div>
+        <div class="pub-metric"><div class="pub-metric-val neutral">${fmtBRL(p.cpl)}</div><div class="pub-metric-lbl">CPL</div></div>
         <div class="pub-metric"><div class="pub-metric-val neutral">${fmtPct(p.ctr)}</div><div class="pub-metric-lbl">CTR</div></div>
         <div class="pub-metric"><div class="pub-metric-val">${fmtNum2(p.roas)}</div><div class="pub-metric-lbl">ROAS</div></div>
       </div>
     </div>`).join('');
-  tbody.innerHTML = publicos.map(p=>`<tr><td>${p.nome||'—'}</td><td>${fmtBRL(p.inv)}</td><td>${fmtInt(p.imp)}</td><td>${fmtInt(p.cliques)}</td><td>${fmtPct(p.ctr)}</td><td>${fmtInt(p.vendas)}</td><td>${fmtBRL(p.fat)}</td><td>${fmtNum2(p.roas)}</td></tr>`).join('');
+  tbody.innerHTML = publicos.map(p=>`<tr><td>${p.nome||'—'}</td><td>${fmtBRL(p.inv)}</td><td>${fmtInt(p.imp)}</td><td>${fmtInt(p.cliques)}</td><td>${fmtPct(p.ctr)}</td><td>${fmtInt(p.leads)}</td><td>${fmtBRL(p.cpl)}</td><td>${fmtInt(p.vendas)}</td><td>${fmtBRL(p.fat)}</td><td>${fmtNum2(p.roas)}</td></tr>`).join('');
 }
 
 // ── Semana a Semana / Mês a Mês ──────────────────────────────────
