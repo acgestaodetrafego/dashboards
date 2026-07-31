@@ -106,7 +106,35 @@ tr:hover td{background:rgba(29,185,84,.04)}
 .periodo-vazio strong{display:block;font-size:13px;color:rgba(238,244,240,.6);margin-bottom:4px}
 .dim{opacity:.45}
 @media(max-width:900px){.cri-grid{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:600px){.cri-grid{grid-template-columns:1fr}.chart-grid-2x2{grid-template-columns:1fr}.funil-section{grid-template-columns:1fr}.logo-act img{height:44px}}
+@media(max-width:600px){
+  .cri-grid{grid-template-columns:1fr}
+  .chart-grid-2x2{grid-template-columns:1fr}
+  .funil-section{grid-template-columns:1fr}
+  .logo-act img{height:38px}
+  .topbar-brand{padding:10px 14px;gap:8px}
+  .topbar-controls{padding:8px 14px}
+  .brand{font-size:14px}
+  .subtitle{font-size:9.5px}
+  .content{padding:14px}
+  .tabs{padding:0 10px}
+  .tab{padding:10px 12px;font-size:12px}
+  .kpi-grid{grid-template-columns:repeat(2,1fr);gap:8px}
+  .kpi-card{padding:11px 12px}
+  .kpi-value{font-size:16px}
+  .period-bar{gap:6px;width:100%}
+  .period-bar label{display:none}
+  .date-input{min-width:0;flex:1 1 118px;padding:6px 8px;font-size:12px}
+  .period-sep{padding:0}
+  .preset-btn{padding:6px 9px;font-size:11px}
+  .range-info{width:100%;order:99;padding-left:0;margin-top:2px}
+  .status-banner{margin:10px 14px 0;padding:10px 12px;font-size:11.5px}
+  .pub-grid,.paginas-grid{grid-template-columns:1fr}
+  .sec-title{font-size:12px}
+}
+@media(max-width:380px){
+  .kpi-grid{grid-template-columns:1fr 1fr}
+  .logo-act img{height:32px}
+}
 .paginas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:14px}
 .pagina-card{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#141d18;border:1px solid #213127;border-radius:12px;padding:18px 20px;text-decoration:none;transition:all .15s}
 .pagina-card:hover{border-color:#1db954;background:rgba(29,185,84,.08)}
@@ -1022,10 +1050,14 @@ function renderStatus(){
 
   let cls, ico, html;
   if(ativas.length === 0){
-    cls='pausado'; ico='⏸️';
-    html = `<div><strong>Nenhuma campanha ativa.</strong> ${CAMPANHAS.length === 1 ? 'A campanha está pausada' : `As ${CAMPANHAS.length} campanhas estão pausadas`}`
-         + (ultimaEntrega ? ` — última veiculação em <strong>${fmtData(ultimaEntrega)}</strong> (${textoDiasDesde(ultimaEntrega)}).` : '.')
-         + `<br>Dias sem investimento, sem lead novo e sem venda foram ocultados. O período exibido termina na última data com movimento real.</div>`;
+    // Sem campanha ativa: o badge no cabeçalho já avisa. Não repete em card grande.
+    banner.style.display = 'none';
+    if(badge){
+      badge.style.display = 'inline-block';
+      badge.className = 'badge-status pausada';
+      badge.textContent = '⏸ Pausada';
+    }
+    return;
   } else if(dias !== null && dias > CONFIG.DADOS.DIAS_SEM_ENTREGA_ALERTA){
     cls='alerta'; ico='⚠️';
     html = `<div><strong>${ativas.length} campanha(s) ativa(s), mas sem entrega ${textoDiasDesde(ultimaEntrega)}.</strong>`
