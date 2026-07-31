@@ -307,7 +307,7 @@ tr:hover td{background:rgba(29,185,84,.04)}
   </div>
   <div class="cri-grid" id="cri-grid"></div>
   <div class="tbl-wrap"><table>
-    <thead><tr><th>Criativo</th><th>Invest.</th><th>Impr.</th><th>Cliques</th><th>CTR</th><th>CPC</th><th>Vendas</th><th>Fat.</th><th>ROAS</th></tr></thead>
+    <thead><tr><th>Criativo</th><th>Invest.</th><th>Impr.</th><th>Cliques</th><th>CTR</th><th>CPC</th><th>Leads (Meta)</th><th>CPL</th><th>Vendas</th><th>Fat.</th><th>ROAS</th></tr></thead>
     <tbody id="cri-tbody"></tbody>
   </table></div>
 </div>
@@ -1309,9 +1309,9 @@ function buildCriPubMaps(from, to){
   const criMap = {};
   fGrows.forEach(g=>{
     const key = g.ad || '(sem nome)';
-    if(!criMap[key]) criMap[key] = {nome:g.ad, link:g.link, inv:0, imp:0, cliques:0, pv:0, ck:0};
+    if(!criMap[key]) criMap[key] = {nome:g.ad, link:g.link, inv:0, imp:0, cliques:0, pv:0, ck:0, leads:0};
     const c = criMap[key];
-    c.inv+=g.inv; c.imp+=g.imp; c.cliques+=g.cliques; c.pv+=g.pv; c.ck+=g.ck;
+    c.inv+=g.inv; c.imp+=g.imp; c.cliques+=g.cliques; c.pv+=g.pv; c.ck+=g.ck; c.leads+=(g.leads||0);
     c.statusAd=g.statusAd; c.statusAdset=g.statusAdset; c.statusCampaign=g.statusCampaign; c.link=g.link||c.link;
   });
   const criativos = Object.values(criMap).map(c=>{
@@ -1322,6 +1322,7 @@ function buildCriPubMaps(from, to){
       roas: c.inv>0 ? fat/c.inv : 0,
       ctr: c.imp>0 ? c.cliques/c.imp*100 : 0,
       cpc: c.cliques>0 ? c.inv/c.cliques : 0,
+      cpl: c.leads>0 ? c.inv/c.leads : 0,
       ativo: !isPaused(c.statusAd) && !isPaused(c.statusAdset) && !isPaused(c.statusCampaign)
              && (c.statusAd!==''||c.statusAdset!==''||c.statusCampaign!=='')
     };
@@ -1365,7 +1366,7 @@ function renderCriativos(from, to){
   const tbody = document.getElementById('cri-tbody');
   if(criativos.length===0){
     grid.innerHTML = '<div class="empty-state">Nenhum criativo no período selecionado.</div>';
-    tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Sem dados.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="empty-state">Sem dados.</td></tr>';
     return;
   }
   grid.innerHTML = criativos.map(c=>`
@@ -1376,6 +1377,8 @@ function renderCriativos(from, to){
       </div>
       <div class="cri-metrics">
         <div class="cri-metric"><div class="cri-metric-label">Invest.</div><div class="cri-metric-val">${fmtBRL(c.inv)}</div></div>
+        <div class="cri-metric"><div class="cri-metric-label">Leads (Meta)</div><div class="cri-metric-val">${fmtInt(c.leads)}</div></div>
+        <div class="cri-metric"><div class="cri-metric-label">CPL</div><div class="cri-metric-val">${fmtBRL(c.cpl)}</div></div>
         <div class="cri-metric"><div class="cri-metric-label">CTR</div><div class="cri-metric-val">${fmtPct(c.ctr)}</div></div>
         <div class="cri-metric"><div class="cri-metric-label">CPC</div><div class="cri-metric-val">${fmtBRL(c.cpc)}</div></div>
         <div class="cri-metric"><div class="cri-metric-label">ROAS</div><div class="cri-metric-val hl">${fmtNum2(c.roas)}</div></div>
@@ -1384,7 +1387,7 @@ function renderCriativos(from, to){
       </div>
       ${c.link?`<a class="cri-link" href="${c.link}" target="_blank">${c.link}</a>`:''}
     </div>`).join('');
-  tbody.innerHTML = criativos.map(c=>`<tr><td>${c.nome||'—'}</td><td>${fmtBRL(c.inv)}</td><td>${fmtInt(c.imp)}</td><td>${fmtInt(c.cliques)}</td><td>${fmtPct(c.ctr)}</td><td>${fmtBRL(c.cpc)}</td><td>${fmtInt(c.vendas)}</td><td>${fmtBRL(c.fat)}</td><td>${fmtNum2(c.roas)}</td></tr>`).join('');
+  tbody.innerHTML = criativos.map(c=>`<tr><td>${c.nome||'—'}</td><td>${fmtBRL(c.inv)}</td><td>${fmtInt(c.imp)}</td><td>${fmtInt(c.cliques)}</td><td>${fmtPct(c.ctr)}</td><td>${fmtBRL(c.cpc)}</td><td>${fmtInt(c.leads)}</td><td>${fmtBRL(c.cpl)}</td><td>${fmtInt(c.vendas)}</td><td>${fmtBRL(c.fat)}</td><td>${fmtNum2(c.roas)}</td></tr>`).join('');
 }
 
 function renderPublicos(from, to){
