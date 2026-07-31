@@ -92,6 +92,20 @@ tr:hover td{background:rgba(29,185,84,.04)}
 .comprador-card .valor{font-family:'DM Mono',monospace;font-size:16px;font-weight:700;color:#1db954;margin-bottom:6px}
 .comprador-card .meta{font-size:10px;color:rgba(0,0,0,.45);line-height:1.5}
 .empty-state{padding:40px 20px;text-align:center;color:rgba(0,0,0,.35);font-size:12px}
+.status-banner{margin:14px 28px 0;padding:12px 16px;border-radius:10px;font-size:12px;line-height:1.6;display:flex;gap:10px;align-items:flex-start}
+.status-banner .sb-ico{font-size:16px;line-height:1.2;flex-shrink:0}
+.status-banner strong{font-weight:700}
+.status-banner.ativo{background:rgba(29,185,84,.07);border:1px solid rgba(29,185,84,.3);color:#157a38}
+.status-banner.alerta{background:rgba(212,160,23,.09);border:1px solid rgba(212,160,23,.35);color:#8a6b0f}
+.status-banner.pausado{background:rgba(0,0,0,.035);border:1px solid rgba(0,0,0,.12);color:rgba(0,0,0,.6)}
+.badge-status{font-size:10px;padding:2px 9px;border-radius:20px;font-weight:600;white-space:nowrap;display:inline-block;letter-spacing:.3px}
+.badge-status.ativa{background:rgba(29,185,84,.15);color:#158a3e}
+.badge-status.pausada{background:rgba(0,0,0,.07);color:rgba(0,0,0,.45)}
+.badge-status.desconhecida{background:rgba(212,160,23,.15);color:#8a6b0f}
+.brand-row{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.periodo-vazio{background:rgba(0,0,0,.03);border:1px dashed rgba(0,0,0,.15);border-radius:10px;padding:28px 20px;text-align:center;color:rgba(0,0,0,.45);font-size:12px;line-height:1.7;margin-bottom:20px}
+.periodo-vazio strong{display:block;font-size:13px;color:rgba(0,0,0,.6);margin-bottom:4px}
+.dim{opacity:.45}
 @media(max-width:900px){.cri-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:600px){.cri-grid{grid-template-columns:1fr}.chart-grid-2x2{grid-template-columns:1fr}.funil-section{grid-template-columns:1fr}}
 </style>
@@ -128,10 +142,15 @@ tr:hover td{background:rgba(29,185,84,.04)}
     <button class="preset-btn" onclick="loadData()" style="margin-left:4px">🔄 Atualizar</button>
   </div>
   <div>
-    <div class="brand" id="brand-title">📦 Produto · Cliente</div>
+    <div class="brand-row">
+      <span class="badge-status" id="brand-status" style="display:none"></span>
+      <div class="brand" id="brand-title">📦 Produto · Cliente</div>
+    </div>
     <div class="subtitle" id="brand-subtitle">Dashboard de Performance — Perpétuo · AC Gestão de Tráfego</div>
   </div>
 </div>
+
+<div class="status-banner" id="status-banner" style="display:none"></div>
 
 <div class="tabs">
   <div class="tab active" onclick="showTab('trafego',this)">📊 Tráfego</div>
@@ -145,7 +164,8 @@ tr:hover td{background:rgba(29,185,84,.04)}
 
 <!-- TRÁFEGO -->
 <div class="content active" id="tab-trafego">
-  <div class="kpi-grid">
+  <div class="periodo-vazio" id="periodo-vazio" style="display:none"></div>
+  <div class="kpi-grid" id="trafego-kpis">
     <div class="kpi-card"><div class="kpi-label">Investimento</div><div class="kpi-value" id="kpi-investimento">—</div></div>
     <div class="kpi-card"><div class="kpi-label">Fat. Tráfego</div><div class="kpi-value green" id="kpi-fat-trafego">—</div></div>
     <div class="kpi-card"><div class="kpi-label">Fat. Orgânico</div><div class="kpi-value" id="kpi-fat-organico">—</div></div>
@@ -164,6 +184,12 @@ tr:hover td{background:rgba(29,185,84,.04)}
   </div>
   <div class="sec-title">Vendas</div>
   <div class="cards-compradores" id="cards-compradores"></div>
+
+  <div class="sec-title">Status das Campanhas</div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Campanha</th><th>Status</th><th>Última veiculação</th><th>Invest. total</th><th>Dias com entrega</th></tr></thead>
+    <tbody id="camp-status-tbody"></tbody>
+  </table></div>
 </div>
 
 <!-- VISÃO GERAL -->
@@ -323,6 +349,21 @@ const CONFIG = {
 
   // Colunas da planilha de Leads (0-based)
   L: { timestamp: 0, nome: 1, email: 2, resultadoChave: 3, resultadoLabel: 4 },
+
+  // ── Higiene de dados (campanha pausada / linhas zeradas) ──────────
+  // O Gerenciador continua gravando linhas todo dia mesmo com a campanha
+  // pausada. Estas regras impedem que esse ruído entre no dashboard.
+  DADOS: {
+    // Descarta linha do Gerenciador sem investimento E sem nenhuma métrica
+    // (impressões, cliques, PV, checkout, leads). Mantém o histórico real.
+    IGNORAR_LINHAS_ZERADAS: true,
+    // Um dia só aparece se tiver investimento, entrega, lead novo ou venda.
+    IGNORAR_DIAS_SEM_ATIVIDADE: true,
+    // Mostra "—" no lugar de R$ 0,00 / 0 nos indicadores.
+    ZERO_COMO_TRACO: true,
+    // Alerta quando a campanha está ATIVA mas sem entrega há N dias.
+    DIAS_SEM_ENTREGA_ALERTA: 2,
+  },
 };
 
 const SHEET_ID = CONFIG.SHEET_ID, GERENCIADOR_SHEET = CONFIG.GERENCIADOR_SHEET,
@@ -339,6 +380,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
 });
 
 let GROWS = [], SALES = [], DIAS = [], LEADS = [];
+let GROWS_RAW = [];   // todas as linhas do Gerenciador, inclusive zeradas (só p/ ler status)
+let CAMPANHAS = [];   // status atual de cada campanha
 let currentFrom = null, currentTo = null;
 let criStatusFilter = 'todos', criSortBy = 'inv';
 let pubStatusFilter = 'todos', pubSortBy = 'inv';
@@ -417,15 +460,47 @@ function isPaused(s){ return String(s||'').toUpperCase().includes('PAUSED'); }
 function isTrafego(s){ return (s.utmSource||'').toLowerCase().replace(/[\s_-]/g,'') === 'metaads'; }
 function normalize(s){ return String(s||'').trim().toLowerCase(); }
 
-function fmtBRL(n){ return 'R$ ' + (n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-function fmtPct(n){ if(!isFinite(n)) return '—'; return n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%'; }
-function fmtInt(n){ return Math.round(n||0).toLocaleString('pt-BR'); }
-function fmtNum2(n){ if(!isFinite(n)) return '—'; return n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+const ZERO_TRACO = () => CONFIG.DADOS.ZERO_COMO_TRACO;
+function fmtBRL(n){ if(!isFinite(n) || (!n && ZERO_TRACO())) return '—'; return 'R$ ' + (n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtPct(n){ if(!isFinite(n) || (!n && ZERO_TRACO())) return '—'; return n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%'; }
+function fmtInt(n){ if(!isFinite(n) || (!n && ZERO_TRACO())) return '—'; return Math.round(n||0).toLocaleString('pt-BR'); }
+function fmtNum2(n){ if(!isFinite(n) || (!n && ZERO_TRACO())) return '—'; return n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function setText(id, val){ const el=document.getElementById(id); if(el) el.textContent = val; }
+
+// ── Data / atividade ──────────────────────────────────────────────
+function fmtData(iso){
+  if(!iso) return '—';
+  const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+}
+function hojeISO(){
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+}
+function diasDesde(iso){
+  if(!iso) return null;
+  const a = new Date(iso+'T00:00:00'), b = new Date(hojeISO()+'T00:00:00');
+  return Math.max(0, Math.round((b-a)/86400000));
+}
+function textoDiasDesde(iso){
+  const d = diasDesde(iso);
+  if(d===null) return '';
+  if(d===0) return 'hoje';
+  if(d===1) return 'ontem';
+  return `há ${d} dias`;
+}
+// Linha do Gerenciador com alguma entrega real
+function temAtividade(g){
+  return (g.inv>0 || g.imp>0 || g.cliques>0 || g.pv>0 || g.ck>0 || (g.leads||0)>0);
+}
+// Dia com algo que justifique aparecer: entrega, lead novo ou venda
+function diaTemAtividade(d){
+  return (d.inv>0 || d.imp>0 || d.cliques>0 || d.pv>0 || d.ck>0 || (d.leads||0)>0 || (d.vendas||0)>0);
+}
 
 // ── Build datasets ───────────────────────────────────────────────
 function buildGROWS(rows){
-  return rows.filter(r=>!isEmptyRow(r)).map(r=>({
+  const all = rows.filter(r=>!isEmptyRow(r)).map(r=>({
     date: parseFlexDate(r[G.date]),
     campaign: r[G.campaign]||'', adset: r[G.adset]||'', ad: r[G.ad]||'', link: r[G.link]||'',
     inv: parseFlexNumPlain(r[G.inv]), imp: parseFlexNumPlain(r[G.imp]), reach: parseFlexNumPlain(r[G.reach]),
@@ -435,6 +510,13 @@ function buildGROWS(rows){
     statusAd: (r[G.statusAd]||'').toUpperCase().trim(),
     publico: r[G.publico]||'',
   })).filter(g=>g.date && g.date >= DATA_MINIMA);
+
+  // Guarda tudo (inclusive linhas zeradas) — é delas que sai o status atual
+  GROWS_RAW = all;
+
+  // Descarta linhas sem investimento e sem nenhuma métrica: campanha pausada
+  // que o Make continua gravando todo dia não vira dado no dashboard.
+  return CONFIG.DADOS.IGNORAR_LINHAS_ZERADAS ? all.filter(temAtividade) : all;
 }
 // Gerenciador inv/spend usa formatação BR mesmo sem CONFIG.VALORES_EM_CENTAVOS (sempre reais)
 function parseFlexNumPlain(str){
@@ -496,18 +578,48 @@ function buildLEADS(rows){
   })).filter(l=> l.data && l.data >= DATA_MINIMA);
 }
 
-function buildDIAS(grows, leads){
+function buildDIAS(grows, leads, sales){
   const map = {};
+  const novo = data => ({data, inv:0, imp:0, reach:0, cliques:0, pv:0, ck:0, leads:0, vendas:0});
   grows.forEach(g=>{
-    if(!map[g.date]) map[g.date] = {data:g.date, inv:0, imp:0, reach:0, cliques:0, pv:0, ck:0, leads:0};
+    if(!map[g.date]) map[g.date] = novo(g.date);
     const d = map[g.date];
     d.inv+=g.inv; d.imp+=g.imp; d.reach+=g.reach; d.cliques+=g.cliques; d.pv+=g.pv; d.ck+=g.ck;
   });
   (leads||[]).forEach(l=>{
-    if(!map[l.data]) map[l.data] = {data:l.data, inv:0, imp:0, reach:0, cliques:0, pv:0, ck:0, leads:0};
+    if(!map[l.data]) map[l.data] = novo(l.data);
     map[l.data].leads += 1;
   });
-  return Object.values(map).sort((a,b)=>a.data.localeCompare(b.data));
+  // Venda orgânica em dia sem investimento também é atividade
+  (sales||[]).forEach(s=>{
+    if(!map[s.data]) map[s.data] = novo(s.data);
+    map[s.data].vendas += 1;
+  });
+  let dias = Object.values(map);
+  if(CONFIG.DADOS.IGNORAR_DIAS_SEM_ATIVIDADE) dias = dias.filter(diaTemAtividade);
+  return dias.sort((a,b)=>a.data.localeCompare(b.data));
+}
+
+// ── Status das campanhas ─────────────────────────────────────────
+// Lê o status da linha mais recente de cada campanha no Gerenciador.
+function buildCAMPANHAS(){
+  const map = {};
+  GROWS_RAW.forEach(g=>{
+    const nome = g.campaign || '(sem nome)';
+    if(!map[nome]) map[nome] = {nome, status:'', ultimaLinha:'', ultimaEntrega:'', inv:0, diasEntrega:0};
+    const c = map[nome];
+    c.inv += g.inv;
+    if(g.date >= c.ultimaLinha){ c.ultimaLinha = g.date; c.status = g.statusCampaign || ''; }
+    if(temAtividade(g)){
+      c.diasEntrega++;
+      if(g.date > c.ultimaEntrega) c.ultimaEntrega = g.date;
+    }
+  });
+  return Object.values(map).map(c=>({
+    ...c,
+    pausada: isPaused(c.status),
+    ativa: c.status !== '' && !isPaused(c.status),
+  })).sort((a,b)=> (b.ultimaEntrega||'').localeCompare(a.ultimaEntrega||'') || b.inv-a.inv);
 }
 
 // ── Load ──────────────────────────────────────────────────────────
@@ -534,7 +646,8 @@ async function loadData(){
     GROWS = buildGROWS(gRows);
     SALES = buildSALES(wRows);
     LEADS = buildLEADS(lRows);
-    DIAS = buildDIAS(GROWS, LEADS);
+    DIAS = buildDIAS(GROWS, LEADS, SALES);
+    CAMPANHAS = buildCAMPANHAS();
     setupDateDefaults();
     renderAll();
     hideLoading();
@@ -592,6 +705,7 @@ function showTab(id, el){
 function renderAll(){
   const from = currentFrom, to = currentTo;
   document.getElementById('range-info').textContent = (from&&to) ? `${from} → ${to}` : '';
+  renderStatus();
   renderTrafego(from, to);
   renderVisaoGeral(from, to);
   renderLeads(from, to);
@@ -605,12 +719,80 @@ function filterByDate(arr, dateField, from, to){
   return arr.filter(x => (!from || x[dateField] >= from) && (!to || x[dateField] <= to));
 }
 
+// ── Status (banner + tabela) ─────────────────────────────────────
+function renderStatus(){
+  const banner = document.getElementById('status-banner');
+  const badge  = document.getElementById('brand-status');
+  const tbody  = document.getElementById('camp-status-tbody');
+
+  // Tabela de campanhas
+  if(tbody){
+    tbody.innerHTML = CAMPANHAS.length ? CAMPANHAS.map(c=>{
+      const cls = c.ativa ? 'ativa' : (c.pausada ? 'pausada' : 'desconhecida');
+      const txt = c.ativa ? 'Ativa' : (c.pausada ? 'Pausada' : 'Sem status');
+      const ent = c.ultimaEntrega ? `${fmtData(c.ultimaEntrega)} <span class="dim">(${textoDiasDesde(c.ultimaEntrega)})</span>` : '—';
+      return `<tr><td>${c.nome}</td><td><span class="badge-status ${cls}">${txt}</span></td><td>${ent}</td><td>${fmtBRL(c.inv)}</td><td>${fmtInt(c.diasEntrega)}</td></tr>`;
+    }).join('') : '<tr><td colspan="5" class="empty-state">Nenhuma campanha encontrada no Gerenciador.</td></tr>';
+  }
+
+  if(!banner) return;
+  if(CAMPANHAS.length === 0){ banner.style.display='none'; if(badge) badge.style.display='none'; return; }
+
+  const ativas = CAMPANHAS.filter(c=>c.ativa);
+  const ultimaEntrega = CAMPANHAS.map(c=>c.ultimaEntrega).filter(Boolean).sort().pop() || '';
+  const dias = diasDesde(ultimaEntrega);
+  const nomesAtivas = ativas.map(c=>c.nome).join(', ');
+
+  let cls, ico, html;
+  if(ativas.length === 0){
+    cls='pausado'; ico='⏸️';
+    html = `<div><strong>Nenhuma campanha ativa.</strong> ${CAMPANHAS.length === 1 ? 'A campanha está pausada' : `As ${CAMPANHAS.length} campanhas estão pausadas`}`
+         + (ultimaEntrega ? ` — última veiculação em <strong>${fmtData(ultimaEntrega)}</strong> (${textoDiasDesde(ultimaEntrega)}).` : '.')
+         + `<br>Dias sem investimento, sem lead novo e sem venda foram ocultados. O período exibido termina na última data com movimento real.</div>`;
+  } else if(dias !== null && dias > CONFIG.DADOS.DIAS_SEM_ENTREGA_ALERTA){
+    cls='alerta'; ico='⚠️';
+    html = `<div><strong>${ativas.length} campanha(s) ativa(s), mas sem entrega ${textoDiasDesde(ultimaEntrega)}.</strong>`
+         + ` Última veiculação: <strong>${fmtData(ultimaEntrega)}</strong>. Vale conferir orçamento, aprovação de anúncio ou a coleta da planilha.<br>${nomesAtivas}</div>`;
+  } else {
+    cls='ativo'; ico='▶️';
+    html = `<div><strong>${ativas.length} campanha(s) ativa(s).</strong>`
+         + (ultimaEntrega ? ` Última veiculação: <strong>${fmtData(ultimaEntrega)}</strong> (${textoDiasDesde(ultimaEntrega)}).` : '')
+         + (nomesAtivas ? `<br>${nomesAtivas}` : '') + `</div>`;
+  }
+  banner.className = 'status-banner ' + cls;
+  banner.innerHTML = `<span class="sb-ico">${ico}</span>${html}`;
+  banner.style.display = 'flex';
+
+  if(badge){
+    badge.style.display = 'inline-block';
+    badge.className = 'badge-status ' + (ativas.length ? 'ativa' : 'pausada');
+    badge.textContent = ativas.length ? '▶ Veiculando' : '⏸ Pausada';
+  }
+}
+
 // ── Tráfego ──────────────────────────────────────────────────────
 function renderTrafego(from, to){
   const fSales = filterByDate(SALES, 'data', from, to);
   const fGrows = filterByDate(GROWS, 'date', from, to);
+  const fLeads = filterByDate(LEADS, 'data', from, to);
 
   const investimento = fGrows.reduce((s,g)=>s+g.inv,0);
+
+  // Período sem investimento, sem lead e sem venda: não mostra painel zerado
+  const vazio = investimento === 0 && fSales.length === 0 && fLeads.length === 0;
+  const aviso = document.getElementById('periodo-vazio');
+  const kpis  = document.getElementById('trafego-kpis');
+  if(aviso){
+    aviso.style.display = vazio ? 'block' : 'none';
+    if(vazio){
+      const ultima = DIAS.length ? DIAS[DIAS.length-1].data : '';
+      aviso.innerHTML = `<strong>Sem atividade no período selecionado.</strong>`
+        + `Nenhum investimento, nenhum lead novo e nenhuma venda entre ${fmtData(from)} e ${fmtData(to)}.`
+        + (ultima ? `<br>Último dia com movimento: <strong>${fmtData(ultima)}</strong> (${textoDiasDesde(ultima)}). Use o botão “Tudo” para voltar ao período com dados.` : '');
+    }
+  }
+  if(kpis) kpis.style.display = vazio ? 'none' : 'grid';
+
   const trafegoSales = fSales.filter(isTrafego);
   const orgSales = fSales.filter(s=>!isTrafego(s));
   const fatTrafego = trafegoSales.reduce((s,v)=>s+v.fatTotal,0);
@@ -633,8 +815,8 @@ function renderTrafego(from, to){
   setText('kpi-fat-trafego', fmtBRL(fatTrafego));
   setText('kpi-fat-organico', fmtBRL(fatOrg));
   setText('kpi-roas', fmtNum2(roas));
-  setText('kpi-vendas-trafego', vendasTrafego + (obCountTrafego>0 ? ` +${obCountTrafego} OB` : ''));
-  setText('kpi-vendas-organico', vendasOrg + (obCountOrg>0 ? ` +${obCountOrg} OB` : ''));
+  setText('kpi-vendas-trafego', fmtInt(vendasTrafego) + (obCountTrafego>0 ? ` +${obCountTrafego} OB` : ''));
+  setText('kpi-vendas-organico', fmtInt(vendasOrg) + (obCountOrg>0 ? ` +${obCountOrg} OB` : ''));
   setText('kpi-ob-trafego', fmtBRL(obTrafego));
   setText('kpi-ob-organico', fmtBRL(obOrg));
   setText('kpi-cac', fmtBRL(cac));
@@ -660,7 +842,7 @@ function renderCardsCompradores(fSales){
     return `<div class="comprador-card">
       <div class="nome">${s.nome||'—'}</div>
       <div class="valor">${fmtBRL(s.fatTotal)}</div>
-      <div class="meta">${s.data}<br>${origem}${ob}
+      <div class="meta">${fmtData(s.data)}<br>${origem}${ob}
       ${s.utmContent ? '<br>🎯 '+s.utmContent : ''}
       ${s.utmMedium ? '<br>👥 '+s.utmMedium : ''}</div>
     </div>`;
@@ -690,7 +872,7 @@ function renderVisaoGeral(from, to){
     const dayRoas = d.inv>0 ? dayFat/d.inv : 0;
     const dayTicket = daySales.length>0 ? dayFat/daySales.length : 0;
     const dayCac = dayTrafego>0 ? d.inv/dayTrafego : 0;
-    return `<tr><td>${d.data}</td><td>${fmtBRL(d.inv)}</td><td>${fmtBRL(dayFat)}</td><td>${fmtNum2(dayRoas)}</td><td>${daySales.length}</td><td>${dayTrafego}</td><td>${dayOrg}</td><td>${d.leads||0}</td><td>${fmtBRL(dayTicket)}</td><td>${fmtBRL(dayCac)}</td></tr>`;
+    return `<tr><td>${fmtData(d.data)}</td><td>${fmtBRL(d.inv)}</td><td>${fmtBRL(dayFat)}</td><td>${fmtNum2(dayRoas)}</td><td>${fmtInt(daySales.length)}</td><td>${fmtInt(dayTrafego)}</td><td>${fmtInt(dayOrg)}</td><td>${fmtInt(d.leads)}</td><td>${fmtBRL(dayTicket)}</td><td>${fmtBRL(dayCac)}</td></tr>`;
   });
   tbody.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="10" class="empty-state">Sem dados no período.</td></tr>';
 }
@@ -761,7 +943,7 @@ function renderLeads(from, to){
   const tbodyList = document.getElementById('lead-list-tbody');
   const sortedLeads = fLeads.slice().sort((a,b)=>b.data.localeCompare(a.data));
   tbodyList.innerHTML = sortedLeads.length ? sortedLeads.map(l=>
-    `<tr><td>${l.data}</td><td>${l.nome||'—'}</td><td>${l.email||'—'}</td><td>${l.resultadoLabel||l.resultadoChave||'—'}</td></tr>`
+    `<tr><td>${fmtData(l.data)}</td><td>${l.nome||'—'}</td><td>${l.email||'—'}</td><td>${l.resultadoLabel||l.resultadoChave||'—'}</td></tr>`
   ).join('') : '<tr><td colspan="4" class="empty-state">Sem leads no período.</td></tr>';
 }
 
@@ -842,12 +1024,12 @@ function renderCriativos(from, to){
         <div class="cri-metric"><div class="cri-metric-label">CTR</div><div class="cri-metric-val">${fmtPct(c.ctr)}</div></div>
         <div class="cri-metric"><div class="cri-metric-label">CPC</div><div class="cri-metric-val">${fmtBRL(c.cpc)}</div></div>
         <div class="cri-metric"><div class="cri-metric-label">ROAS</div><div class="cri-metric-val hl">${fmtNum2(c.roas)}</div></div>
-        <div class="cri-metric"><div class="cri-metric-label">Vendas</div><div class="cri-metric-val">${c.vendas}</div></div>
+        <div class="cri-metric"><div class="cri-metric-label">Vendas</div><div class="cri-metric-val">${fmtInt(c.vendas)}</div></div>
         <div class="cri-metric"><div class="cri-metric-label">Fat.</div><div class="cri-metric-val hl">${fmtBRL(c.fat)}</div></div>
       </div>
       ${c.link?`<a class="cri-link" href="${c.link}" target="_blank">${c.link}</a>`:''}
     </div>`).join('');
-  tbody.innerHTML = criativos.map(c=>`<tr><td>${c.nome||'—'}</td><td>${fmtBRL(c.inv)}</td><td>${fmtInt(c.imp)}</td><td>${fmtInt(c.cliques)}</td><td>${fmtPct(c.ctr)}</td><td>${fmtBRL(c.cpc)}</td><td>${c.vendas}</td><td>${fmtBRL(c.fat)}</td><td>${fmtNum2(c.roas)}</td></tr>`).join('');
+  tbody.innerHTML = criativos.map(c=>`<tr><td>${c.nome||'—'}</td><td>${fmtBRL(c.inv)}</td><td>${fmtInt(c.imp)}</td><td>${fmtInt(c.cliques)}</td><td>${fmtPct(c.ctr)}</td><td>${fmtBRL(c.cpc)}</td><td>${fmtInt(c.vendas)}</td><td>${fmtBRL(c.fat)}</td><td>${fmtNum2(c.roas)}</td></tr>`).join('');
 }
 
 function renderPublicos(from, to){
@@ -875,7 +1057,7 @@ function renderPublicos(from, to){
         <div class="pub-metric"><div class="pub-metric-val">${fmtNum2(p.roas)}</div><div class="pub-metric-lbl">ROAS</div></div>
       </div>
     </div>`).join('');
-  tbody.innerHTML = publicos.map(p=>`<tr><td>${p.nome||'—'}</td><td>${fmtBRL(p.inv)}</td><td>${fmtInt(p.imp)}</td><td>${fmtInt(p.cliques)}</td><td>${fmtPct(p.ctr)}</td><td>${p.vendas}</td><td>${fmtBRL(p.fat)}</td><td>${fmtNum2(p.roas)}</td></tr>`).join('');
+  tbody.innerHTML = publicos.map(p=>`<tr><td>${p.nome||'—'}</td><td>${fmtBRL(p.inv)}</td><td>${fmtInt(p.imp)}</td><td>${fmtInt(p.cliques)}</td><td>${fmtPct(p.ctr)}</td><td>${fmtInt(p.vendas)}</td><td>${fmtBRL(p.fat)}</td><td>${fmtNum2(p.roas)}</td></tr>`).join('');
 }
 
 // ── Semana a Semana / Mês a Mês ──────────────────────────────────
