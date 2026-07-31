@@ -157,7 +157,20 @@ tr:hover td{background:rgba(29,185,84,.04)}
 </head>
 <body>
 
-<div id="loading-overlay" style="position:fixed;inset:0;background:#0c1210;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px">
+<!-- Tela de senha: só cosmética (arquivo estático, sem servidor por trás).
+     Serve pra afastar acesso casual, não é segurança de verdade. -->
+<div id="gate-overlay" style="position:fixed;inset:0;background:#0c1210;z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px">
+  <div style="width:100%;max-width:340px;text-align:center">
+    <div style="font-size:15px;font-weight:700;color:#1db954;margin-bottom:4px">🔒 AC Gestão de Tráfego</div>
+    <div style="font-size:12px;color:rgba(238,244,240,.4);margin-bottom:22px">Este painel é restrito. Digite a senha pra continuar.</div>
+    <input type="password" id="gate-senha" placeholder="Senha"
+      style="width:100%;background:rgba(29,185,84,.06);border:1px solid rgba(29,185,84,.25);color:#eef4f0;padding:11px 14px;border-radius:8px;font-size:14px;font-family:'DM Sans',sans-serif;outline:none;box-sizing:border-box;text-align:center">
+    <button onclick="tentarEntrar()" style="width:100%;margin-top:10px;background:#1db954;border:none;color:#0c1210;font-weight:700;padding:11px 14px;border-radius:8px;font-size:14px;cursor:pointer;font-family:'DM Sans',sans-serif">Entrar</button>
+    <div id="gate-erro" style="color:#ff6b6a;font-size:12px;margin-top:10px;display:none">Senha incorreta.</div>
+  </div>
+</div>
+
+<div id="loading-overlay" style="position:fixed;inset:0;background:#0c1210;z-index:9999;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px">
   <div style="width:40px;height:40px;border:3px solid rgba(29,185,84,.2);border-top-color:#1db954;border-radius:50%;animation:spin 1s linear infinite"></div>
   <div style="color:rgba(238,244,240,.45);font-size:13px" id="loading-msg">Conectando com a planilha...</div>
   <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
@@ -369,6 +382,14 @@ const CONFIG = {
   PRODUTO: 'RTC — Quiz',
   ANO: '2026',
 
+  // ── Senha de acesso ────────────────────────────────────────────
+  // ⚠️ Isto é um arquivo estático (sem servidor): qualquer senha aqui fica
+  // visível pra quem abrir "Ver código-fonte" do navegador. Serve pra afastar
+  // acesso casual e link compartilhado à toa — não é proteção contra alguém
+  // tecnicamente curioso de propósito. Troque livremente quando quiser,
+  // é só editar o texto entre aspas abaixo e salvar.
+  SENHA: 'trocar123',
+
   SHEET_ID: '1CpsqgS9XTh4_WYZJyAhEwGBrUKzrgmWR5qXiKRoktqw',
   GERENCIADOR_SHEET: 'Gerenciador',
   WEBHOOK_SHEET: 'Webhook',
@@ -512,6 +533,46 @@ const SHEET_ID = CONFIG.SHEET_ID, GERENCIADOR_SHEET = CONFIG.GERENCIADOR_SHEET,
       G = CONFIG.G, W = CONFIG.W;
 
 document.addEventListener('DOMContentLoaded', ()=>{
+  verificarSenha();
+});
+
+// ── Tela de senha ──────────────────────────────────────────────────
+const CHAVE_AUTH = 'ac_dash_auth';
+function verificarSenha(){
+  const salvo = localStorage.getItem(CHAVE_AUTH);
+  if(salvo === CONFIG.SENHA){
+    esconderGate();
+    iniciarDashboard();
+    return;
+  }
+  const input = document.getElementById('gate-senha');
+  if(input){
+    input.focus();
+    input.addEventListener('keydown', e=>{ if(e.key==='Enter') tentarEntrar(); });
+  }
+}
+function tentarEntrar(){
+  const input = document.getElementById('gate-senha');
+  const erro = document.getElementById('gate-erro');
+  if(!input) return;
+  if(input.value === CONFIG.SENHA){
+    localStorage.setItem(CHAVE_AUTH, CONFIG.SENHA);
+    esconderGate();
+    iniciarDashboard();
+  } else {
+    if(erro) erro.style.display = 'block';
+    input.value = '';
+    input.focus();
+  }
+}
+function esconderGate(){
+  const g = document.getElementById('gate-overlay');
+  if(g) g.style.display = 'none';
+}
+
+// Só busca a planilha DEPOIS da senha certa — assim ninguém vê dado
+// trafegando na aba Rede do navegador sem antes ter passado pela senha.
+function iniciarDashboard(){
   const F = CONFIG.FUNIS[CONFIG.FUNIL];
   const ico = CONFIG.FUNIL === 'QUIZ' ? '📝' : '🛒';
   document.title = F.nome + ' · ' + CONFIG.CLIENTE + ' — AC Gestão de Tráfego';
@@ -533,7 +594,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   // Atualização automática em segundo plano — sem botão manual, sem piscar
   // a tela, e sem mexer no período que a pessoa tiver selecionado.
   setInterval(()=>loadData(true), 5*60*1000);
-});
+}
 
 function renderPaginas(){
   const grid = document.getElementById('paginas-grid');
