@@ -394,7 +394,7 @@ const CONFIG = {
   // acesso casual e link compartilhado à toa — não é proteção contra alguém
   // tecnicamente curioso de propósito. Troque livremente quando quiser,
   // é só editar o texto entre aspas abaixo e salvar.
-  SENHA: 'rodrigocorrea',
+  SENHA: 'trocar123',
 
   SHEET_ID: '1CpsqgS9XTh4_WYZJyAhEwGBrUKzrgmWR5qXiKRoktqw',
   GERENCIADOR_SHEET: 'Gerenciador',
@@ -1066,16 +1066,17 @@ async function loadData(silent){
   if(!silent) showLoading('Conectando com a planilha...');
   try{
     DESCARTES = []; FORA_DO_FUNIL = new Set(); VENDAS_OUTRAS = [];
+    const temLeads = CONFIG.FUNIS[CONFIG.FUNIL].temLeads;
     const [webhookText, gerText, leadsText] = await Promise.all([
       fetchSheetCSV(WEBHOOK_SHEET), fetchSheetCSV(GERENCIADOR_SHEET),
-      fetchSheetCSV(CONFIG.LEADS_SHEET_NAME, CONFIG.LEADS_SHEET_ID)
+      temLeads ? fetchSheetCSV(CONFIG.LEADS_SHEET_NAME, CONFIG.LEADS_SHEET_ID) : Promise.resolve('')
     ]);
     const wRows = parseCSV(webhookText).slice(1);
     const gRows = parseCSV(gerText).slice(1);
-    const lRows = parseCSV(leadsText).slice(1);
+    const lRows = temLeads ? parseCSV(leadsText).slice(1) : [];
     GROWS = buildGROWS(gRows);
     SALES = buildSALES(wRows);
-    LEADS = CONFIG.FUNIS[CONFIG.FUNIL].temLeads ? buildLEADS(lRows) : [];
+    LEADS = temLeads ? buildLEADS(lRows) : [];
     DIAS = buildDIAS(GROWS, LEADS, SALES);
     CAMPANHAS = buildCAMPANHAS();
     reaplicarFiltroPeriodo();
