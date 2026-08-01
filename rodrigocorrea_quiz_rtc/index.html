@@ -388,7 +388,7 @@ const CONFIG = {
   // acesso casual e link compartilhado à toa — não é proteção contra alguém
   // tecnicamente curioso de propósito. Troque livremente quando quiser,
   // é só editar o texto entre aspas abaixo e salvar.
-  SENHA: 'rodrigocorrea',
+  SENHA: 'trocar123',
 
   SHEET_ID: '1CpsqgS9XTh4_WYZJyAhEwGBrUKzrgmWR5qXiKRoktqw',
   GERENCIADOR_SHEET: 'Gerenciador',
@@ -423,7 +423,10 @@ const CONFIG = {
   G: {
     date: 0, campaign: 2, adset: 3, ad: 4, link: 5,
     inv: 6, imp: 7, reach: 8, cliques: 9, pv: 10, ck: 11, leads: 12,
-    statusCampaign: 13, statusAdset: 14, statusAd: 15, publico: 16,
+    statusCampaign: 13, statusAdset: 14, statusAd: 15,
+    // Colunas adicionadas depois, no final da planilha (16-19) — nunca inserir
+    // no meio, só no final, ou isso aqui desalinha tudo.
+    campaignId: 16, adsetId: 17, adId: 18, temperatura: 19,
   },
 
 
@@ -865,7 +868,8 @@ function buildGROWS(rows){
     statusCampaign: (r[G.statusCampaign]||'').toUpperCase().trim(),
     statusAdset: (r[G.statusAdset]||'').toUpperCase().trim(),
     statusAd: (r[G.statusAd]||'').toUpperCase().trim(),
-    publico: r[G.publico]||'',
+    campaignId: (r[G.campaignId]||'').trim(), adsetId: (r[G.adsetId]||'').trim(), adId: (r[G.adId]||'').trim(),
+    publico: r[G.temperatura]||'',
   })).filter(g=>g.date && g.date >= DATA_MINIMA);
 
   // Só o que pertence a este funil. O resto é de outro dashboard.
@@ -972,9 +976,10 @@ function buildCAMPANHAS(){
   const map = {};
   GROWS_RAW.forEach(g=>{
     const nome = g.campaign || '(sem nome)';
-    if(!map[nome]) map[nome] = {nome, status:'', ultimaLinha:'', ultimaEntrega:'', inv:0, diasEntrega:0};
+    if(!map[nome]) map[nome] = {nome, status:'', ultimaLinha:'', ultimaEntrega:'', inv:0, diasEntrega:0, campaignId:''};
     const c = map[nome];
     c.inv += g.inv;
+    if(g.campaignId) c.campaignId = g.campaignId;
     if(g.date >= c.ultimaLinha){ c.ultimaLinha = g.date; c.status = g.statusCampaign || ''; }
     if(temAtividade(g)){
       c.diasEntrega++;
@@ -1115,7 +1120,7 @@ function renderStatus(){
       const cls = c.ativa ? 'ativa' : (c.pausada ? 'pausada' : 'desconhecida');
       const txt = c.ativa ? 'Ativa' : (c.pausada ? 'Pausada' : 'Sem status');
       const ent = c.ultimaEntrega ? `${fmtData(c.ultimaEntrega)} <span class="dim">(${textoDiasDesde(c.ultimaEntrega)})</span>` : '—';
-      const url = linkDaCampanha(c.nome);
+      const url = c.campaignId ? urlAdsManager(c.campaignId) : linkDaCampanha(c.nome);
       const nomeHtml = url
         ? `<a href="${url}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;text-decoration-color:rgba(29,185,84,.4)">${c.nome} ↗</a>`
         : c.nome;
