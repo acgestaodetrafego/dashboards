@@ -23,6 +23,8 @@ body{background:#0c1210;color:#eef4f0;font-family:'DM Sans',sans-serif;min-heigh
 .preset-group{display:flex;align-items:center;gap:8px}
 .period-bar label{font-size:11px;color:rgba(238,244,240,.45);white-space:nowrap}
 .date-input{background:rgba(29,185,84,.06);border:1px solid rgba(29,185,84,.25);color:#eef4f0;padding:5px 10px;border-radius:6px;font-size:12px;font-family:'DM Sans',sans-serif;cursor:pointer;outline:none;min-width:118px}
+.date-input::-webkit-calendar-picker-indicator{filter:invert(1) brightness(1.3);cursor:pointer;opacity:.8}
+.date-input::-webkit-calendar-picker-indicator:hover{opacity:1}
 .date-input:focus{border-color:#1db954}
 .date-input::-webkit-calendar-picker-indicator{opacity:.5;cursor:pointer}
 .period-sep{color:rgba(238,244,240,.2);font-size:13px;padding:0 2px}
@@ -66,6 +68,7 @@ tr:hover td{background:rgba(29,185,84,.04)}
 .cri-card.ativo{border-color:rgba(29,185,84,.4)}
 .cri-card-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
 .cri-name{font-size:11px;font-weight:600;word-break:break-all;flex:1;margin-right:6px;color:#eef4f0}
+.cri-campanha{font-size:9.5px;color:rgba(238,244,240,.4);margin-top:2px;word-break:break-all}
 .cri-badge{font-size:10px;padding:2px 6px;border-radius:4px;white-space:nowrap}
 .cri-badge.ativo{background:rgba(29,185,84,.15);color:#1db954}
 .cri-badge.inativo{background:rgba(238,244,240,.06);color:rgba(238,244,240,.4)}
@@ -269,7 +272,7 @@ tr:hover td{background:rgba(29,185,84,.04)}
       <div class="taxa-item"><span>PV → Checkout</span><span class="taxa-val" id="taxa-pvck">—</span></div>
       <div class="taxa-item leads-only"><span>Lead → Checkout</span><span class="taxa-val" id="taxa-3">—</span></div>
       <div class="taxa-item"><span>Checkout → Compra</span><span class="taxa-val" id="taxa-4">—</span></div>
-      <div class="taxa-item"><span>Clique → Compra</span><span class="taxa-val" id="taxa-5">—</span></div>
+      <div class="taxa-item"><span>PV → Compra</span><span class="taxa-val" id="taxa-5">—</span></div>
     </div>
   </div>
   <div class="sec-title">Dia a Dia</div>
@@ -320,7 +323,7 @@ tr:hover td{background:rgba(29,185,84,.04)}
   </div>
   <div class="cri-grid" id="cri-grid"></div>
   <div class="tbl-wrap"><table>
-    <thead><tr><th>Criativo</th><th>Invest.</th><th>Impr.</th><th>Cliques</th><th>CTR</th><th>CPC</th><th class="th-leads">Leads (Meta)</th><th class="th-leads">CPL</th><th>Vendas</th><th>Fat.</th><th>ROAS</th></tr></thead>
+    <thead><tr><th>Criativo</th><th>Campanha</th><th>Invest.</th><th>Impr.</th><th>Cliques</th><th>CTR</th><th>CPC</th><th class="th-leads">Leads (Meta)</th><th class="th-leads">CPL</th><th>Vendas</th><th>Fat.</th><th>ROAS</th></tr></thead>
     <tbody id="cri-tbody"></tbody>
   </table></div>
 </div>
@@ -362,7 +365,7 @@ tr:hover td{background:rgba(29,185,84,.04)}
     <div class="chart-card"><h4>CTR por Semana</h4><canvas id="chart-ctr-semanal"></canvas></div>
   </div>
   <div class="tbl-wrap"><table>
-    <thead><tr><th>Semana</th><th>Invest.</th><th>Impr.</th><th>Cliques</th><th>CTR</th></tr></thead>
+    <thead><tr><th>Semana</th><th>Invest.</th><th>Impr.</th><th>Cliques</th><th>CTR</th><th>CPM</th><th>Taxa PV</th><th>Checkout</th><th>Vendas</th></tr></thead>
     <tbody id="semanal-tbody"></tbody>
   </table></div>
 </div>
@@ -374,7 +377,7 @@ tr:hover td{background:rgba(29,185,84,.04)}
     <div class="chart-card"><h4>CTR por Mês</h4><canvas id="chart-ctr-mensal"></canvas></div>
   </div>
   <div class="tbl-wrap"><table>
-    <thead><tr><th>Mês</th><th>Invest.</th><th>Impr.</th><th>Cliques</th><th>CTR</th></tr></thead>
+    <thead><tr><th>Mês</th><th>Invest.</th><th>Impr.</th><th>Cliques</th><th>CTR</th><th>CPM</th><th>Taxa PV</th><th>Checkout</th><th>Vendas</th></tr></thead>
     <tbody id="mensal-tbody"></tbody>
   </table></div>
 </div>
@@ -766,6 +769,7 @@ function ehDataISO(s){ return isoValida(s); }
 // ── Datas descartadas (para achar a célula suja na planilha) ──────
 let DESCARTES = [];
 let FORA_DO_FUNIL = new Set();   // campanhas sem classificação
+let ADSET_CAMPANHA = {};         // conjunto_id → campanha_id, pra resolver venda que só trouxe o ID do conjunto
 let VENDAS_OUTRAS = [];          // vendas de outro funil / sem atribuição
 function dataUtil(origem, bruto){
   const iso = parseFlexDate(bruto);
@@ -807,13 +811,19 @@ function funilDaCampanha(nome){
   return '';
 }
 // Venda: ID nas UTMs manda. Nome só entra como último recurso.
-function funilDaVenda(s){
+// IDs numéricos (campanha/conjunto/anúncio) presentes em qualquer campo de
+// UTM da venda — usado por funil, página e criativo pra atribuir sem depender
+// de nome (rename de campanha não quebra nada disso).
+function idsDaVenda(s){
   const campos = [s.utmCampaign, s.utmTerm, s.utmMedium, s.utmContent];
-  for(const campo of campos){
-    const ids = String(campo||'').match(/\d{15,}/g) || [];
-    for(const id of ids){ if(CONFIG.MAPA.ids[id]) return CONFIG.MAPA.ids[id]; }
-  }
-  const txt = campos.join(' ').toUpperCase();
+  const ids = [];
+  campos.forEach(campo => { (String(campo||'').match(/\d{15,}/g) || []).forEach(id=>ids.push(id)); });
+  return ids;
+}
+function funilDaVenda(s){
+  const ids = idsDaVenda(s);
+  for(const id of ids){ if(CONFIG.MAPA.ids[id]) return CONFIG.MAPA.ids[id]; }
+  const txt = [s.utmCampaign, s.utmTerm, s.utmMedium, s.utmContent].join(' ').toUpperCase();
   if(txt.includes('QUIZ')) return 'QUIZ';
   if(txt.includes('PV'))   return 'PV';
   return '';
@@ -833,14 +843,19 @@ function paginaDoGerenciador(g){ return paginaId(g.campaignId, g.adsetId); }
 // Venda: mesma lógica de funilDaVenda — procura ID (campanha ou conjunto)
 // em qualquer campo de UTM, não depende de nome.
 function paginaDaVenda(s){
-  const campos = [s.utmCampaign, s.utmTerm, s.utmMedium, s.utmContent];
-  const idsTodos = [];
-  campos.forEach(campo => { (String(campo||'').match(/\d{15,}/g) || []).forEach(id=>idsTodos.push(id)); });
+  const idsTodos = idsDaVenda(s);
   const M = CONFIG.MAPA.paginas || {porAdset:{}, porCampanha:{}};
-  // 1ª passada: conjunto (mais específico) tem prioridade, não importa em qual campo de UTM apareceu
+  // 1ª: conjunto listado como exceção (mais específico) tem prioridade
   for(const id of idsTodos){ if(M.porAdset[id]) return M.porAdset[id]; }
-  // 2ª passada: cai pra campanha inteira
+  // 2ª: o próprio ID já é uma campanha conhecida
   for(const id of idsTodos){ if(M.porCampanha[id]) return M.porCampanha[id]; }
+  // 3ª: o ID é o conjunto de uma campanha (não listado como exceção) —
+  // acha a campanha-mãe pelo que o Gerenciador já registrou e cai no
+  // padrão dela. É o caso mais comum: a UTM trouxe só o conjunto.
+  for(const id of idsTodos){
+    const campId = ADSET_CAMPANHA[id];
+    if(campId && M.porCampanha[campId]) return M.porCampanha[campId];
+  }
   return '';
 }
 function nomePagina(id){
@@ -928,6 +943,10 @@ function buildGROWS(rows){
     publico: r[G.temperatura]||'',
   })).map(g=>({...g, pagina: paginaDoGerenciador(g)}))
     .filter(g=>g.date && g.date >= DATA_MINIMA);
+
+  // Guarda conjunto→campanha de TODA linha (mesmo de outro funil) — usado
+  // pra resolver venda que só trouxe o ID do conjunto na UTM.
+  all.forEach(g=>{ if(g.adsetId && g.campaignId) ADSET_CAMPANHA[g.adsetId] = g.campaignId; });
 
   // Só o que pertence a este funil. O resto é de outro dashboard.
   const doFunil = all.filter(g=>{
@@ -1065,7 +1084,7 @@ function showError(msg){
 async function loadData(silent){
   if(!silent) showLoading('Conectando com a planilha...');
   try{
-    DESCARTES = []; FORA_DO_FUNIL = new Set(); VENDAS_OUTRAS = [];
+    DESCARTES = []; FORA_DO_FUNIL = new Set(); VENDAS_OUTRAS = []; ADSET_CAMPANHA = {};
     const temLeads = CONFIG.FUNIS[CONFIG.FUNIL].temLeads;
     const [webhookText, gerText, leadsText] = await Promise.all([
       fetchSheetCSV(WEBHOOK_SHEET), fetchSheetCSV(GERENCIADOR_SHEET),
@@ -1376,7 +1395,7 @@ function renderFunil(cliques, pv, leads, ck, compras){
   setText('taxa-pvck', ck>0&&pv>0 ? fmtPct(ck/pv*100) : '—');
   setText('taxa-3', ck>0&&leads>0 ? fmtPct(ck/leads*100) : '—');
   setText('taxa-4', compras>0&&ck>0 ? fmtPct(compras/ck*100) : '—');
-  setText('taxa-5', compras>0&&cliques>0 ? fmtPct(compras/cliques*100) : '—');
+  setText('taxa-5', compras>0&&pv>0 ? fmtPct(compras/pv*100) : '—');
 }
 
 // ── Leads ──────────────────────────────────────────────────────
@@ -1459,16 +1478,38 @@ function buildCriPubMaps(from, to){
   const fGrows = filterByDate(GROWS, 'date', from, to);
   const fSales = filterByDate(SALES, 'data', from, to);
 
+  // Quantos anúncios distintos existem em cada conjunto, e quantos conjuntos
+  // distintos em cada campanha — só atribui venda no nível mais fino (anúncio
+  // ou conjunto) quando isso é inequívoco, pra nunca contar a mesma venda
+  // duas vezes em linhas diferentes.
+  const adsPorAdset = {};
+  const adsetsPorCampanha = {};
+  fGrows.forEach(g=>{
+    if(g.adsetId){
+      (adsPorAdset[g.adsetId] = adsPorAdset[g.adsetId]||new Set()).add(g.adId||'');
+      if(g.campaignId) (adsetsPorCampanha[g.campaignId] = adsetsPorCampanha[g.campaignId]||new Set()).add(g.adsetId);
+    }
+  });
+
+  // Mesmo nome de criativo/conjunto se repete em campanhas diferentes —
+  // por isso agrupa pelo ID real (anúncio / conjunto), não pelo nome.
   const criMap = {};
   fGrows.forEach(g=>{
-    const key = g.ad || '(sem nome)';
-    if(!criMap[key]) criMap[key] = {nome:g.ad, link:g.link, inv:0, imp:0, cliques:0, pv:0, ck:0, leads:0};
+    const key = g.adId || (g.campaign+'|'+g.ad) || '(sem nome)';
+    if(!criMap[key]) criMap[key] = {nome:g.ad, campanha:g.campaign, link:g.link,
+      adId:g.adId, adsetId:g.adsetId, campaignId:g.campaignId, inv:0, imp:0, cliques:0, pv:0, ck:0, leads:0};
     const c = criMap[key];
     c.inv+=g.inv; c.imp+=g.imp; c.cliques+=g.cliques; c.pv+=g.pv; c.ck+=g.ck; c.leads+=(g.leads||0);
     c.statusAd=g.statusAd; c.statusAdset=g.statusAdset; c.statusCampaign=g.statusCampaign; c.link=g.link||c.link;
   });
   const criativos = Object.values(criMap).map(c=>{
-    const vendas = fSales.filter(s=> normalize(s.utmContent)===normalize(c.nome));
+    const adsetUnico = c.adsetId && adsPorAdset[c.adsetId] && adsPorAdset[c.adsetId].size===1;
+    const vendas = fSales.filter(s=>{
+      const ids = idsDaVenda(s);
+      if(c.adId && ids.includes(c.adId)) return true;                    // UTM trouxe o ID do anúncio direto
+      if(adsetUnico && c.adsetId && ids.includes(c.adsetId)) return true; // conjunto com 1 anúncio só: seguro descer
+      return false;
+    });
     const fat = vendas.reduce((s,v)=>s+v.fatTotal,0);
     return {...c,
       vendas: vendas.length, fat,
@@ -1483,14 +1524,20 @@ function buildCriPubMaps(from, to){
 
   const pubMap = {};
   fGrows.forEach(g=>{
-    const key = g.adset || '(sem nome)';
-    if(!pubMap[key]) pubMap[key] = {nome:g.adset, inv:0, imp:0, cliques:0, pv:0, ck:0, leads:0};
+    const key = g.adsetId || g.adset || '(sem nome)';
+    if(!pubMap[key]) pubMap[key] = {nome:g.adset, campanha:g.campaign, adsetId:g.adsetId, campaignId:g.campaignId, inv:0, imp:0, cliques:0, pv:0, ck:0, leads:0};
     const p = pubMap[key];
     p.inv+=g.inv; p.imp+=g.imp; p.cliques+=g.cliques; p.pv+=g.pv; p.ck+=g.ck; p.leads+=(g.leads||0);
     p.statusAdset=g.statusAdset; p.statusCampaign=g.statusCampaign; p.publico=g.publico;
   });
   const publicos = Object.values(pubMap).map(p=>{
-    const vendas = fSales.filter(s=> normalize(s.utmMedium)===normalize(p.nome));
+    const campanhaUnica = p.campaignId && adsetsPorCampanha[p.campaignId] && adsetsPorCampanha[p.campaignId].size===1;
+    const vendas = fSales.filter(s=>{
+      const ids = idsDaVenda(s);
+      if(p.adsetId && ids.includes(p.adsetId)) return true;                     // UTM trouxe o ID do conjunto direto
+      if(campanhaUnica && p.campaignId && ids.includes(p.campaignId)) return true; // campanha com 1 conjunto só
+      return false;
+    });
     const fat = vendas.reduce((s,v)=>s+v.fatTotal,0);
     return {...p,
       vendas: vendas.length, fat,
@@ -1520,13 +1567,16 @@ function renderCriativos(from, to){
   const tbody = document.getElementById('cri-tbody');
   if(criativos.length===0){
     grid.innerHTML = '<div class="empty-state">Nenhum criativo no período selecionado.</div>';
-    tbody.innerHTML = `<tr><td colspan="${temLeads?11:9}" class="empty-state">Sem dados.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${temLeads?12:10}" class="empty-state">Sem dados.</td></tr>`;
     return;
   }
   grid.innerHTML = criativos.map(c=>`
     <div class="cri-card ${c.ativo?'ativo':''}">
       <div class="cri-card-header">
-        <div class="cri-name">${c.nome||'—'}</div>
+        <div>
+          <div class="cri-name">${c.nome||'—'}</div>
+          <div class="cri-campanha">${c.campanha||''}</div>
+        </div>
         <div class="cri-badge ${c.ativo?'ativo':'inativo'}">${c.ativo?'Ativo':'Inativo'}</div>
       </div>
       <div class="cri-metrics">
@@ -1541,7 +1591,7 @@ function renderCriativos(from, to){
       </div>
       ${c.link?`<a class="cri-link" href="${c.link}" target="_blank">${c.link}</a>`:''}
     </div>`).join('');
-  tbody.innerHTML = criativos.map(c=>`<tr><td>${c.nome||'—'}</td><td>${fmtBRL(c.inv)}</td><td>${fmtInt(c.imp)}</td><td>${fmtInt(c.cliques)}</td><td>${fmtPct(c.ctr)}</td><td>${fmtBRL(c.cpc)}</td>${temLeads?`<td>${fmtInt(c.leads)}</td><td>${fmtBRL(c.cpl)}</td>`:''}<td>${fmtInt(c.vendas)}</td><td>${fmtBRL(c.fat)}</td><td>${fmtNum2(c.roas)}</td></tr>`).join('');
+  tbody.innerHTML = criativos.map(c=>`<tr><td>${c.nome||'—'}</td><td>${c.campanha||'—'}</td><td>${fmtBRL(c.inv)}</td><td>${fmtInt(c.imp)}</td><td>${fmtInt(c.cliques)}</td><td>${fmtPct(c.ctr)}</td><td>${fmtBRL(c.cpc)}</td>${temLeads?`<td>${fmtInt(c.leads)}</td><td>${fmtBRL(c.cpl)}</td>`:''}<td>${fmtInt(c.vendas)}</td><td>${fmtBRL(c.fat)}</td><td>${fmtNum2(c.roas)}</td></tr>`).join('');
 }
 
 function renderPaginasMetricas(from, to){
@@ -1597,8 +1647,9 @@ function buildSemanal(){
   DIAS.forEach(d=>{
     const key = isoWeekStart(d.data);
     if(!key) return;   // data que não deveria mais existir aqui, mas não derruba o render
-    if(!map[key]) map[key]={semana:key, inv:0, imp:0, cliques:0};
-    map[key].inv+=d.inv; map[key].imp+=d.imp; map[key].cliques+=d.cliques;
+    if(!map[key]) map[key]={semana:key, inv:0, imp:0, cliques:0, pv:0, ck:0, vendas:0};
+    const s = map[key];
+    s.inv+=d.inv; s.imp+=d.imp; s.cliques+=d.cliques; s.pv+=d.pv; s.ck+=d.ck; s.vendas+=(d.vendas||0);
   });
   return Object.values(map).sort((a,b)=>a.semana.localeCompare(b.semana));
 }
@@ -1606,8 +1657,9 @@ function buildMensal(){
   const map={};
   DIAS.forEach(d=>{
     const key = d.data.slice(0,7);
-    if(!map[key]) map[key]={mes:key, inv:0, imp:0, cliques:0};
-    map[key].inv+=d.inv; map[key].imp+=d.imp; map[key].cliques+=d.cliques;
+    if(!map[key]) map[key]={mes:key, inv:0, imp:0, cliques:0, pv:0, ck:0, vendas:0};
+    const m = map[key];
+    m.inv+=d.inv; m.imp+=d.imp; m.cliques+=d.cliques; m.pv+=d.pv; m.ck+=d.ck; m.vendas+=(d.vendas||0);
   });
   return Object.values(map).sort((a,b)=>a.mes.localeCompare(b.mes));
 }
@@ -1616,8 +1668,10 @@ function renderSemanal(){
   const tbody = document.getElementById('semanal-tbody');
   tbody.innerHTML = data.length ? data.slice().reverse().map(s=>{
     const ctr = s.imp>0 ? s.cliques/s.imp*100 : 0;
-    return `<tr><td>${s.semana}</td><td>${fmtBRL(s.inv)}</td><td>${fmtInt(s.imp)}</td><td>${fmtInt(s.cliques)}</td><td>${fmtPct(ctr)}</td></tr>`;
-  }).join('') : '<tr><td colspan="5" class="empty-state">Sem dados.</td></tr>';
+    const cpm = s.imp>0 ? s.inv/s.imp*1000 : 0;
+    const taxaPv = s.cliques>0 ? s.pv/s.cliques*100 : 0;
+    return `<tr><td>${s.semana}</td><td>${fmtBRL(s.inv)}</td><td>${fmtInt(s.imp)}</td><td>${fmtInt(s.cliques)}</td><td>${fmtPct(ctr)}</td><td>${fmtBRL(cpm)}</td><td>${fmtPct(taxaPv)}</td><td>${fmtInt(s.ck)}</td><td>${fmtInt(s.vendas)}</td></tr>`;
+  }).join('') : '<tr><td colspan="9" class="empty-state">Sem dados.</td></tr>';
 
   const labels = data.map(s=>s.semana);
   const inv = data.map(s=>s.inv);
@@ -1630,8 +1684,10 @@ function renderMensal(){
   const tbody = document.getElementById('mensal-tbody');
   tbody.innerHTML = data.length ? data.slice().reverse().map(m=>{
     const ctr = m.imp>0 ? m.cliques/m.imp*100 : 0;
-    return `<tr><td>${m.mes}</td><td>${fmtBRL(m.inv)}</td><td>${fmtInt(m.imp)}</td><td>${fmtInt(m.cliques)}</td><td>${fmtPct(ctr)}</td></tr>`;
-  }).join('') : '<tr><td colspan="5" class="empty-state">Sem dados.</td></tr>';
+    const cpm = m.imp>0 ? m.inv/m.imp*1000 : 0;
+    const taxaPv = m.cliques>0 ? m.pv/m.cliques*100 : 0;
+    return `<tr><td>${m.mes}</td><td>${fmtBRL(m.inv)}</td><td>${fmtInt(m.imp)}</td><td>${fmtInt(m.cliques)}</td><td>${fmtPct(ctr)}</td><td>${fmtBRL(cpm)}</td><td>${fmtPct(taxaPv)}</td><td>${fmtInt(m.ck)}</td><td>${fmtInt(m.vendas)}</td></tr>`;
+  }).join('') : '<tr><td colspan="9" class="empty-state">Sem dados.</td></tr>';
 
   const labels = data.map(m=>m.mes);
   const inv = data.map(m=>m.inv);
