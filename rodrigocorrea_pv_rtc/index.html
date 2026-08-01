@@ -321,6 +321,7 @@ tr:hover td{background:rgba(29,185,84,.04)}
     <button class="cri-sort-btn" data-sort="roas" onclick="setCriSort('roas',this)">ROAS</button>
     <button class="cri-sort-btn" data-sort="vendas" onclick="setCriSort('vendas',this)">Vendas</button>
   </div>
+  <div id="cri-aviso" style="display:none"></div>
   <div class="cri-grid" id="cri-grid"></div>
   <div class="tbl-wrap"><table>
     <thead><tr><th>Criativo</th><th>Campanha</th><th>Invest.</th><th>Impr.</th><th>Cliques</th><th>CTR</th><th>CPC</th><th class="th-leads">Leads (Meta)</th><th class="th-leads">CPL</th><th>Vendas</th><th>Fat.</th><th>ROAS</th></tr></thead>
@@ -341,7 +342,7 @@ tr:hover td{background:rgba(29,185,84,.04)}
   </div>
   <div class="pub-grid" id="pub-grid"></div>
   <div class="tbl-wrap"><table>
-    <thead><tr><th>Público</th><th>Invest.</th><th>Impr.</th><th>Cliques</th><th>CTR</th><th class="th-leads">Leads (Meta)</th><th class="th-leads">CPL</th><th>Vendas</th><th>Fat.</th><th>ROAS</th></tr></thead>
+    <thead><tr><th>Público</th><th>Campanha</th><th>Invest.</th><th>Impr.</th><th>Cliques</th><th>CTR</th><th class="th-leads">Leads (Meta)</th><th class="th-leads">CPL</th><th>Vendas</th><th>Fat.</th><th>ROAS</th></tr></thead>
     <tbody id="pub-tbody"></tbody>
   </table></div>
 </div>
@@ -770,6 +771,9 @@ function ehDataISO(s){ return isoValida(s); }
 let DESCARTES = [];
 let FORA_DO_FUNIL = new Set();   // campanhas sem classificação
 let ADSET_CAMPANHA = {};         // conjunto_id → campanha_id, pra resolver venda que só trouxe o ID do conjunto
+// Nome de cada ID, tirado direto da própria planilha (Q↔C, R↔D, S↔E) — fonte
+// viva, sempre bate com o que está lá agora, não depende de eu manter lista.
+let NOME_CAMPANHA = {}, NOME_CONJUNTO = {}, NOME_ANUNCIO = {};
 let VENDAS_OUTRAS = [];          // vendas de outro funil / sem atribuição
 function dataUtil(origem, bruto){
   const iso = parseFlexDate(bruto);
@@ -948,6 +952,13 @@ function buildGROWS(rows){
   // pra resolver venda que só trouxe o ID do conjunto na UTM.
   all.forEach(g=>{ if(g.adsetId && g.campaignId) ADSET_CAMPANHA[g.adsetId] = g.campaignId; });
 
+  // Nome de cada ID, direto da própria planilha: Q→C, R→D, S→E.
+  all.forEach(g=>{
+    if(g.campaignId) NOME_CAMPANHA[g.campaignId] = g.campaign;
+    if(g.adsetId)    NOME_CONJUNTO[g.adsetId] = g.adset;
+    if(g.adId)       NOME_ANUNCIO[g.adId] = g.ad;
+  });
+
   // Só o que pertence a este funil. O resto é de outro dashboard.
   const doFunil = all.filter(g=>{
     const f = funilDaCampanha(g.campaign);
@@ -1085,6 +1096,7 @@ async function loadData(silent){
   if(!silent) showLoading('Conectando com a planilha...');
   try{
     DESCARTES = []; FORA_DO_FUNIL = new Set(); VENDAS_OUTRAS = []; ADSET_CAMPANHA = {};
+    NOME_CAMPANHA = {}; NOME_CONJUNTO = {}; NOME_ANUNCIO = {};
     const temLeads = CONFIG.FUNIS[CONFIG.FUNIL].temLeads;
     const [webhookText, gerText, leadsText] = await Promise.all([
       fetchSheetCSV(WEBHOOK_SHEET), fetchSheetCSV(GERENCIADOR_SHEET),
@@ -1494,6 +1506,7 @@ function buildCriPubMaps(from, to){
   // Mesmo nome de criativo/conjunto se repete em campanhas diferentes —
   // por isso agrupa pelo ID real (anúncio / conjunto), não pelo nome.
   const criMap = {};
+  const vendasAtribuidasCriativo = new Set();
   fGrows.forEach(g=>{
     const key = g.adId || (g.campaign+'|'+g.ad) || '(sem nome)';
     if(!criMap[key]) criMap[key] = {nome:g.ad, campanha:g.campaign, link:g.link,
@@ -1510,6 +1523,7 @@ function buildCriPubMaps(from, to){
       if(adsetUnico && c.adsetId && ids.includes(c.adsetId)) return true; // conjunto com 1 anúncio só: seguro descer
       return false;
     });
+    vendas.forEach(v=>vendasAtribuidasCriativo.add(v));
     const fat = vendas.reduce((s,v)=>s+v.fatTotal,0);
     return {...c,
       vendas: vendas.length, fat,
@@ -1524,17 +1538,25 @@ function buildCriPubMaps(from, to){
 
   const pubMap = {};
   fGrows.forEach(g=>{
-    const key = g.adsetId || g.adset || '(sem nome)';
-    if(!pubMap[key]) pubMap[key] = {nome:g.adset, campanha:g.campaign, adsetId:g.adsetId, campaignId:g.campaignId, inv:0, imp:0, cliques:0, pv:0, ck:0, leads:0};
+    // Agrupa por campanha+nome do conjunto — não só pelo ID. Isso junta
+    // conjuntos recriados/duplicados com o mesmo nome dentro da MESMA
+    // campanha (ex: testes A/B do mesmo público), mas continua separando
+    // conjuntos de campanhas diferentes mesmo com nome igual.
+    const key = (g.campaignId||g.campaign) + '|' + (g.adset||'(sem nome)');
+    if(!pubMap[key]) pubMap[key] = {nome:g.adset, campanha:g.campaign, campaignId:g.campaignId,
+      adsetIds:new Set(), inv:0, imp:0, cliques:0, pv:0, ck:0, leads:0, algumAtivo:false};
     const p = pubMap[key];
+    if(g.adsetId) p.adsetIds.add(g.adsetId);
     p.inv+=g.inv; p.imp+=g.imp; p.cliques+=g.cliques; p.pv+=g.pv; p.ck+=g.ck; p.leads+=(g.leads||0);
-    p.statusAdset=g.statusAdset; p.statusCampaign=g.statusCampaign; p.publico=g.publico;
+    p.publico=g.publico;
+    if(!isPaused(g.statusAdset) && !isPaused(g.statusCampaign) && (g.statusAdset!==''||g.statusCampaign!=='')) p.algumAtivo = true;
   });
   const publicos = Object.values(pubMap).map(p=>{
+    const adsetIds = [...p.adsetIds];
     const campanhaUnica = p.campaignId && adsetsPorCampanha[p.campaignId] && adsetsPorCampanha[p.campaignId].size===1;
     const vendas = fSales.filter(s=>{
       const ids = idsDaVenda(s);
-      if(p.adsetId && ids.includes(p.adsetId)) return true;                     // UTM trouxe o ID do conjunto direto
+      if(adsetIds.some(id=>ids.includes(id))) return true;                        // UTM trouxe o ID de algum dos conjuntos deste grupo
       if(campanhaUnica && p.campaignId && ids.includes(p.campaignId)) return true; // campanha com 1 conjunto só
       return false;
     });
@@ -1544,11 +1566,13 @@ function buildCriPubMaps(from, to){
       roas: p.inv>0 ? fat/p.inv : 0,
       ctr: p.imp>0 ? p.cliques/p.imp*100 : 0,
       cpl: p.leads>0 ? p.inv/p.leads : 0,
-      ativo: !isPaused(p.statusAdset) && !isPaused(p.statusCampaign) && (p.statusAdset!==''||p.statusCampaign!=='')
+      ativo: p.algumAtivo
     };
   });
 
-  return {criativos, publicos};
+  const vendasSemCriativo = fSales.filter(s=>!vendasAtribuidasCriativo.has(s));
+
+  return {criativos, publicos, vendasSemCriativo};
 }
 
 function setCriStatus(s, btn){ criStatusFilter=s; document.querySelectorAll('.cri-status-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderCriativos(currentFrom, currentTo); }
@@ -1557,10 +1581,34 @@ function setPubStatus(s, btn){ pubStatusFilter=s; document.querySelectorAll('.pu
 function setPubSort(s, btn){ pubSortBy=s; document.querySelectorAll('.pub-sort-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderPublicos(currentFrom, currentTo); }
 
 function renderCriativos(from, to){
-  let {criativos} = buildCriPubMaps(from, to);
+  let {criativos, vendasSemCriativo} = buildCriPubMaps(from, to);
   if(criStatusFilter==='ativos') criativos = criativos.filter(c=>c.ativo);
   if(criStatusFilter==='inativos') criativos = criativos.filter(c=>!c.ativo);
   criativos.sort((a,b)=>b[criSortBy]-a[criSortBy]);
+
+  const aviso = document.getElementById('cri-aviso');
+  if(aviso){
+    if(vendasSemCriativo.length > 0){
+      const detalhe = vendasSemCriativo.map(s=>{
+        const ids = idsDaVenda(s);
+        const adsetId = ids.find(id=>NOME_CONJUNTO[id]);
+        const campId = adsetId ? ADSET_CAMPANHA[adsetId] : ids.find(id=>NOME_CAMPANHA[id]);
+        const nomeConjunto = adsetId && NOME_CONJUNTO[adsetId];
+        const nomeCampanha = campId && NOME_CAMPANHA[campId];
+        let onde = '';
+        if(nomeConjunto && nomeCampanha) onde = ` (conjunto "${nomeConjunto}", campanha "${nomeCampanha}")`;
+        else if(nomeCampanha) onde = ` (campanha "${nomeCampanha}")`;
+        return fmtBRL(s.fatTotal) + onde;
+      }).join(', ');
+      aviso.className = 'status-banner alerta';
+      aviso.style.display = 'flex';
+      aviso.innerHTML = `<span class="sb-ico">ℹ️</span><div><strong>${vendasSemCriativo.length} venda(s) não aparecem em nenhum criativo abaixo.</strong> `
+        + `A UTM dessas vendas só identificava o conjunto de anúncios, e esse conjunto tem mais de um anúncio ativo — não dá pra saber qual deles converteu sem arriscar contar errado. `
+        + `Elas continuam somadas no público (aba Públicos) e no total geral, só não descem até o anúncio individual. Valor: ${detalhe}.</div>`;
+    } else {
+      aviso.style.display = 'none';
+    }
+  }
 
   const temLeads = CONFIG.FUNIS[CONFIG.FUNIL].temLeads;
   const grid = document.getElementById('cri-grid');
@@ -1614,13 +1662,16 @@ function renderPublicos(from, to){
   const tbody = document.getElementById('pub-tbody');
   if(publicos.length===0){
     grid.innerHTML = '<div class="empty-state">Nenhum público no período selecionado.</div>';
-    tbody.innerHTML = `<tr><td colspan="${temLeads?10:8}" class="empty-state">Sem dados.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${temLeads?11:9}" class="empty-state">Sem dados.</td></tr>`;
     return;
   }
   grid.innerHTML = publicos.map(p=>`
     <div class="pub-card ${p.ativo?'ativo':''}">
       <div class="pub-card-header">
-        <div class="pub-name">${p.nome||'—'}${p.publico?' · '+p.publico:''}</div>
+        <div>
+          <div class="pub-name">${p.nome||'—'}${p.publico?' · '+p.publico:''}</div>
+          <div class="cri-campanha">${p.campanha||''}</div>
+        </div>
         <div class="cri-badge ${p.ativo?'ativo':'inativo'}">${p.ativo?'Ativo':'Inativo'}</div>
       </div>
       <div class="pub-metrics">
@@ -1631,7 +1682,7 @@ function renderPublicos(from, to){
         <div class="pub-metric"><div class="pub-metric-val">${fmtNum2(p.roas)}</div><div class="pub-metric-lbl">ROAS</div></div>
       </div>
     </div>`).join('');
-  tbody.innerHTML = publicos.map(p=>`<tr><td>${p.nome||'—'}</td><td>${fmtBRL(p.inv)}</td><td>${fmtInt(p.imp)}</td><td>${fmtInt(p.cliques)}</td><td>${fmtPct(p.ctr)}</td>${temLeads?`<td>${fmtInt(p.leads)}</td><td>${fmtBRL(p.cpl)}</td>`:''}<td>${fmtInt(p.vendas)}</td><td>${fmtBRL(p.fat)}</td><td>${fmtNum2(p.roas)}</td></tr>`).join('');
+  tbody.innerHTML = publicos.map(p=>`<tr><td>${p.nome||'—'}</td><td>${p.campanha||'—'}</td><td>${fmtBRL(p.inv)}</td><td>${fmtInt(p.imp)}</td><td>${fmtInt(p.cliques)}</td><td>${fmtPct(p.ctr)}</td>${temLeads?`<td>${fmtInt(p.leads)}</td><td>${fmtBRL(p.cpl)}</td>`:''}<td>${fmtInt(p.vendas)}</td><td>${fmtBRL(p.fat)}</td><td>${fmtNum2(p.roas)}</td></tr>`).join('');
 }
 
 // ── Semana a Semana / Mês a Mês ──────────────────────────────────
